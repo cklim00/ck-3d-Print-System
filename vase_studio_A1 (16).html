@@ -1,0 +1,642 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>螺旋花瓶產生器 · A1</title>
+<style>
+  :root{
+    --bg:#17130d;--panel:#211b12;--panel2:#2a2216;--line:#3a3020;
+    --ink:#efe7d6;--muted:#9a8f78;--accent:#ff7d1a;--accent2:#ffb066;
+    --cool:#6fd0c0;--danger:#e06a4f;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    --sans:ui-sans-serif,"Segoe UI",system-ui,"PingFang TC","Microsoft JhengHei",sans-serif;
+  }
+  *{box-sizing:border-box}html,body{margin:0}
+  body{background:radial-gradient(1200px 600px at 80% -10%,#241c10 0,var(--bg) 55%);color:var(--ink);font-family:var(--sans);line-height:1.45;min-height:100vh}
+  .wrap{max-width:1120px;margin:0 auto;padding:28px 22px 60px}
+  header{display:flex;flex-direction:column;gap:6px;margin-bottom:18px}
+  .eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.32em;text-transform:uppercase;color:var(--accent)}
+  h1{font-size:clamp(26px,4vw,40px);margin:0;font-weight:800;letter-spacing:-.01em}
+  h1 .dim{color:var(--muted);font-weight:600}
+  .sub{color:var(--muted);font-size:14px;max-width:64ch}
+  .modeseg{display:flex;gap:8px;margin:14px 0 0}
+  .modeseg button{font-family:var(--mono);font-size:13px;letter-spacing:.04em;color:var(--muted);background:var(--panel2);border:1px solid var(--line);border-radius:9px;padding:9px 16px;cursor:pointer}
+  .modeseg button.on{color:#1a140b;background:var(--accent);border-color:var(--accent);font-weight:700}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:22px;align-items:start;margin-top:18px}
+  @media(max-width:860px){.grid{grid-template-columns:1fr}}
+  .panel{background:linear-gradient(180deg,var(--panel),#1c1610);border:1px solid var(--line);border-radius:14px;padding:18px}
+  .right{position:sticky;top:18px}
+  @media(max-width:860px){.right{position:static}}
+  .group{margin-bottom:18px}.group:last-child{margin-bottom:0}
+  .glabel{font-family:var(--mono);font-size:10px;letter-spacing:.28em;text-transform:uppercase;color:var(--muted);margin:0 0 10px;display:flex;align-items:center;gap:8px}
+  .glabel::after{content:"";flex:1;height:1px;background:var(--line)}
+  .ctrl{display:grid;grid-template-columns:1fr auto;gap:6px 10px;align-items:center;margin:9px 0}
+  .ctrl label{font-size:13px}.ctrl .unit{font-family:var(--mono);font-size:11px;color:var(--muted)}
+  .ctrl input[type=range]{grid-column:1/3;width:100%;accent-color:var(--accent);height:4px;margin:2px 0 0}
+  .ctrl .num{font-family:var(--mono);font-size:13px;color:var(--accent2);background:var(--panel2);border:1px solid var(--line);border-radius:7px;padding:3px 7px;width:74px;text-align:right}
+  .ctrl .num:focus{outline:1px solid var(--accent)}
+  .seg{display:flex;gap:8px;margin:4px 0 2px}
+  .seg button{flex:1;font-family:var(--mono);font-size:12px;color:var(--muted);background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:7px;cursor:pointer}
+  .seg button.on{color:#1a140b;background:var(--accent);border-color:var(--accent);font-weight:700}
+  .check{display:flex;align-items:flex-start;gap:10px;font-size:13px;background:var(--panel2);border:1px solid var(--line);border-radius:9px;padding:11px 12px;cursor:pointer}
+  .check input{margin-top:2px;accent-color:var(--accent)}.check .hint{color:var(--muted);font-size:12px;display:block;margin-top:2px}
+  .drop{border:1.5px dashed var(--line);border-radius:11px;padding:26px 16px;text-align:center;cursor:pointer;transition:.15s;background:var(--panel2)}
+  .drop:hover,.drop.over{border-color:var(--accent);background:#2f2616}
+  .drop .big{font-size:15px;color:var(--ink);font-weight:600}
+  .drop .small{font-size:12px;color:var(--muted);margin-top:5px}
+  .filechip{display:none;align-items:center;justify-content:space-between;gap:10px;margin-top:10px;background:var(--panel2);border:1px solid var(--line);border-radius:9px;padding:9px 12px;font-family:var(--mono);font-size:12px}
+  .filechip .name{color:var(--accent2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .filechip .meta{color:var(--muted);flex:none}
+  #stage{width:100%;aspect-ratio:1/1;border-radius:11px;background:repeating-linear-gradient(0deg,#13100a,#13100a 1px,transparent 1px,transparent 26px),repeating-linear-gradient(90deg,#13100a,#13100a 1px,transparent 1px,transparent 26px),#171108;border:1px solid var(--line);cursor:grab;touch-action:none;display:block}
+  #stage.drag{cursor:grabbing}
+  .stagebar{display:flex;justify-content:space-between;align-items:center;margin:10px 2px 0;font-family:var(--mono);font-size:11px;color:var(--muted)}
+  .stagebar button{font-family:var(--mono);font-size:11px;color:var(--accent2);background:none;border:1px solid var(--line);border-radius:6px;padding:3px 9px;cursor:pointer}
+  .stats{display:grid;grid-template-columns:repeat(2,1fr);gap:1px;background:var(--line);border:1px solid var(--line);border-radius:11px;overflow:hidden;margin-top:16px}
+  .stat{background:var(--panel);padding:12px 14px}
+  .stat .k{font-family:var(--mono);font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted)}
+  .stat .v{font-family:var(--mono);font-size:21px;margin-top:3px}.stat .v small{font-size:12px;color:var(--muted)}
+  .stat .v.hot{color:var(--accent)}.stat .v.warn{color:var(--danger)}
+  .stat .goal{font-size:10.5px;color:var(--muted);margin-top:2px;letter-spacing:.02em}
+  .timewarn{background:#3a1e18;border:1px solid #7a3325;color:#ffb4a2;border-radius:10px;padding:10px 13px;font-size:12.5px;line-height:1.6;margin-top:10px}
+  .btn.primary:disabled{background:#5a4632;color:#a08a6e;border-color:#5a4632;cursor:not-allowed}
+  .actions{display:flex;gap:10px;margin-top:16px;flex-wrap:wrap}
+  .btn{font-family:var(--sans);font-size:14px;font-weight:700;border-radius:10px;padding:12px 16px;cursor:pointer;border:1px solid var(--line)}
+  .btn.primary{background:var(--accent);color:#1a140b;border-color:var(--accent);flex:1;min-width:180px}
+  .btn.primary:hover{background:var(--accent2)}.btn.ghost{background:var(--panel2);color:var(--ink)}.btn.ghost:hover{border-color:var(--accent)}
+  details{margin-top:14px;border:1px solid var(--line);border-radius:10px;background:var(--panel)}
+  summary{cursor:pointer;padding:11px 14px;font-family:var(--mono);font-size:12px;color:var(--muted)}
+  pre{margin:0;padding:0 14px 14px;max-height:280px;overflow:auto;font-family:var(--mono);font-size:11px;color:var(--cool);white-space:pre}
+  .note{font-size:12px;color:var(--muted);margin-top:14px;border-left:2px solid var(--accent);padding-left:11px}
+  .toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(20px);opacity:0;background:var(--accent);color:#1a140b;font-weight:700;font-size:13px;padding:10px 18px;border-radius:10px;transition:.25s;pointer-events:none;max-width:80vw;text-align:center}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  .hidden{display:none}
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="eyebrow">Bambu Lab A1 · Spiral Vase G-code</div>
+    <h1>螺旋花瓶產生器 <span class="dim">/ 直接開印</span></h1>
+    <p class="sub">用參數設計花瓶,或上傳 OBJ 模型自動轉成單壁螺旋花瓶。產生的 .gcode 已內建 A1 設定、省略耗時校正(歸零→加熱→邊緣清料→直接開印),並寫入正確列印時間。</p>
+    <div class="modeseg" id="modeseg">
+      <button data-mode="param" class="on">參數花瓶</button>
+      <button data-mode="obj">上傳 OBJ</button>
+      <button data-mode="gcode">匯入 G-code</button>
+    </div>
+  </header>
+
+  <div class="grid">
+    <div class="panel">
+      <!-- 匯入 G-code -->
+      <div class="group hidden" id="gcodegroup">
+        <p class="glabel">匯入學生的 G-code</p>
+        <div class="drop" id="gdrop">
+          <div class="big">拖曳 .gcode 到這裡,或點擊選檔</div>
+          <div class="small">解析設定並模擬實際走線(任何來源的檔都可)</div>
+          <input type="file" id="gfile" accept=".gcode,.gco,.g" class="hidden">
+        </div>
+        <div class="filechip" id="gchip"><span class="name" id="gfname"></span><span class="meta" id="gfmeta"></span></div>
+        <div id="ginfo" style="margin-top:14px;font-size:13px;line-height:1.9"></div>
+      </div>
+
+      <!-- OBJ 上傳區 -->
+      <div class="group hidden" id="objgroup">
+        <p class="glabel">模型</p>
+        <div class="drop" id="drop">
+          <div class="big">拖曳 .obj 到這裡,或點擊選檔</div>
+          <div class="small">學生上傳的模型會繞中軸投影成單壁花瓶外形</div>
+          <input type="file" id="file" accept=".obj" class="hidden">
+        </div>
+        <div class="filechip" id="chip"><span class="name" id="fname"></span><span class="meta" id="fmeta"></span></div>
+        <div class="ctrl" style="margin-top:12px"><label>模型朝上軸向</label><span class="unit"></span>
+          <div class="seg" style="grid-column:1/3"><button data-axis="Y" class="on">Y 軸朝上</button><button data-axis="Z">Z 軸朝上</button></div>
+        </div>
+      </div>
+
+      <!-- 參數形狀 -->
+      <div class="group" id="shapegroup">
+        <p class="glabel">一鍵造型</p>
+        <div class="seg" id="presetseg" style="flex-wrap:wrap">
+          <button data-preset="ripple">漣漪</button>
+          <button data-preset="petal">扭轉花瓣</button>
+          <button data-preset="barrel">鼓形波浪</button>
+          <button data-preset="star">星形</button>
+          <button data-preset="twistwave">麻花</button>
+        </div>
+        <div class="ctrl" style="margin-top:12px"><label>底半徑</label><span class="unit">mm</span><input type="range" data-k="baseR" min="6" max="60" step="0.5"><input class="num" data-n="baseR"></div>
+        <div class="ctrl"><label>頂部開口半徑 🔒</label><span class="unit">mm</span><input type="range" data-k="topR" min="6" max="60" step="0.5" value="10" disabled><input class="num" data-n="topR" value="10" disabled></div>
+      </div>
+
+      <div class="group" id="patterngroup">
+        <p class="glabel">圖樣 <span id="patternhint" style="font-family:var(--mono);font-size:9px;letter-spacing:0;color:var(--accent2)"></span></p>
+        <p class="glabel" style="margin-top:4px">紋路風格</p>
+        <div class="seg" id="texseg">
+          <button data-tex="none">無</button>
+          <button data-tex="flame">火焰</button>
+          <button data-tex="water">水波</button>
+          <button data-tex="vein">葉脈</button>
+        </div>
+        <div class="ctrl"><label>紋路強度</label><span class="unit">mm</span><input type="range" data-k="texAmp" min="0" max="6" step="0.1"><input class="num" data-n="texAmp"></div>
+        <p class="glabel" style="margin-top:14px">輪廓</p>
+        <div class="seg" id="profileseg">
+          <button data-profile="straight">直筒</button>
+          <button data-profile="barrel">鼓形</button>
+          <button data-profile="hourglass">沙漏</button>
+        </div>
+        <div class="ctrl"><label>輪廓強度</label><span class="unit">×</span><input type="range" data-k="profileAmt" min="0" max="0.6" step="0.02"><input class="num" data-n="profileAmt"></div>
+        <div class="ctrl"><label>垂直波浪數</label><span class="unit">道</span><input type="range" data-k="waveCount" min="0" max="40" step="1"><input class="num" data-n="waveCount"></div>
+        <div class="ctrl"><label>波浪深度</label><span class="unit">mm</span><input type="range" data-k="waveAmp" min="0" max="8" step="0.1"><input class="num" data-n="waveAmp"></div>
+        <div class="ctrl"><label>花瓣數</label><span class="unit">瓣</span><input type="range" data-k="lobes" min="0" max="24" step="1"><input class="num" data-n="lobes"></div>
+        <div class="ctrl"><label>花瓣深度</label><span class="unit">mm</span><input type="range" data-k="lobeDepth" min="0" max="10" step="0.2"><input class="num" data-n="lobeDepth"></div>
+        <div class="ctrl"><label>扭轉</label><span class="unit">度</span><input type="range" data-k="twist" min="0" max="1440" step="10"><input class="num" data-n="twist"></div>
+      </div>
+
+      <div class="group designctrl">
+        <p class="glabel" id="sizelabel">尺寸與品質</p>
+        <div class="ctrl"><label id="hlabel">高度 🔒</label><span class="unit">mm</span><input type="range" data-k="height" min="10" max="180" step="1" value="40" disabled><input class="num" data-n="height" value="40" disabled></div>
+        <div class="ctrl"><label>層高（每圈上升）</label><span class="unit">mm</span><input type="range" data-k="layerHeight" min="0.08" max="0.32" step="0.01"><input class="num" data-n="layerHeight"></div>
+        <div class="ctrl"><label>線寬</label><span class="unit">mm</span><input type="range" data-k="lineWidth" min="0.4" max="1.2" step="0.05"><input class="num" data-n="lineWidth"></div>
+        <div class="ctrl"><label>第一層 Z</label><span class="unit">mm</span><input type="range" data-k="firstZ" min="0.1" max="0.3" step="0.02"><input class="num" data-n="firstZ"></div>
+        <div class="ctrl"><label>流量</label><span class="unit">%</span><input type="range" data-k="flow" min="80" max="130" step="1"><input class="num" data-n="flow"></div>
+      </div>
+
+      <div class="group designctrl">
+        <p class="glabel">材料與溫度</p>
+        <div class="seg" id="matseg"><button data-mat="PLA">PLA</button><button data-mat="PETG">PETG</button><button data-mat="TPU">TPU</button></div>
+        <div class="ctrl"><label>噴頭溫度</label><span class="unit">°C</span><input type="range" data-k="nozzle" min="180" max="260" step="1"><input class="num" data-n="nozzle"></div>
+        <div class="ctrl"><label>熱床溫度</label><span class="unit">°C</span><input type="range" data-k="bed" min="0" max="90" step="1"><input class="num" data-n="bed"></div>
+      </div>
+
+      <div class="group designctrl">
+        <p class="glabel">速度</p>
+        <div class="ctrl"><label>列印速度</label><span class="unit">mm/s</span><input type="range" data-k="speed" min="10" max="120" step="1"><input class="num" data-n="speed"></div>
+        <div class="ctrl"><label>第一層速度</label><span class="unit">mm/s</span><input type="range" data-k="firstSpeed" min="8" max="40" step="1"><input class="num" data-n="firstSpeed"></div>
+        <div class="ctrl"><label>風扇（第一層後）</label><span class="unit">%</span><input type="range" data-k="fan" min="0" max="100" step="5"><input class="num" data-n="fan"></div>
+      </div>
+
+      <div class="group designctrl">
+        <p class="glabel">開頭流程</p>
+        <label class="check"><input type="checkbox" data-k="bedMesh"><span>每次列印做床面調平 (G29)<span class="hint">預設關閉——用機器上次存的調平資料,省約 2–3 分鐘。床不平或常搬機器再開啟。</span></span></label>
+      </div>
+    </div>
+
+    <div class="panel right">
+      <canvas id="stage"></canvas>
+      <div class="stagebar">
+        <div class="seg" style="flex:none;gap:6px"><button id="v_lines" style="flex:none;padding:3px 12px">線條</button><button id="v_shade" class="on" style="flex:none;padding:3px 12px">實體</button></div>
+        <button id="spin">自動旋轉：開</button>
+      </div>
+      <div class="stats">
+        <div class="stat"><div class="k">外徑</div><div class="v" id="s_dia">–</div></div>
+        <div class="stat"><div class="k">高度</div><div class="v" id="s_h">–</div></div>
+        <div class="stat"><div class="k">層數</div><div class="v" id="s_layers">–</div></div>
+        <div class="stat"><div class="k">預估時間</div><div class="v hot" id="s_time">–</div><div class="goal">目標 10–12 分</div></div>
+        <div class="stat"><div class="k">用料長度</div><div class="v" id="s_fil">–</div></div>
+        <div class="stat"><div class="k">重量</div><div class="v" id="s_g">–</div></div>
+      </div>
+      <div class="actions" id="actions"><button class="btn primary" id="dl">產生並下載 .gcode</button><button class="btn ghost" id="cp">複製</button></div>
+      <div class="timewarn" id="timewarn" style="display:none"></div>
+      <details id="gcpreview"><summary>展開 G-code 預覽</summary><pre id="preview">按「產生並下載」後會在此顯示前段內容。</pre></details>
+      <p class="note">存到 microSD → 插入 A1 → 螢幕本機檔案選取直接印。第三方 gcode 無法用雲端送印。外徑超過約 250mm 會顯示紅字,請降低高度。</p>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+const P={baseR:17,topR:10,height:40,lobes:6,lobeDepth:2.5,twist:180,
+  waveAmp:1.5,waveCount:12,profile:'straight',profileAmt:0.25,tex:'none',texAmp:1.5,
+  layerHeight:0.3,lineWidth:0.6,firstZ:0.2,flow:100,
+  nozzle:220,bed:60,speed:40,firstSpeed:18,fan:100,bedMesh:false,
+  filamentD:1.75,density:1.24};
+const MAT={PLA:{nozzle:220,bed:60,density:1.24},PETG:{nozzle:240,bed:70,density:1.27},TPU:{nozzle:230,bed:40,density:1.21}};
+let material="PLA", mode="param", ENV=null, RAW=null, upAxis="Y", GRAW=null, GENV=null, GINFO=null;
+
+/* ---------- OBJ -> 繞軸外緣 envelope ---------- */
+function parseOBJ(text){
+  const V=[],F=[];
+  const lines=text.split(/\r?\n/);
+  for(const line of lines){
+    if(line[0]==='v'&&line[1]===' '){const p=line.split(/\s+/);V.push([+p[1],+p[2],+p[3]]);}
+    else if(line[0]==='f'&&line[1]===' '){
+      const idx=line.trim().split(/\s+/).slice(1).map(t=>{let i=parseInt(t.split('/')[0]);return i<0?V.length+i:i-1;});
+      for(let k=1;k<idx.length-1;k++)F.push([idx[0],idx[k],idx[k+1]]);
+    }
+  }
+  return {V,F};
+}
+function buildEnvelope(V,F,up,thBins=180,zBins=240){
+  const vi=up==='Z'?2:1, a1=0, a2=up==='Z'?1:2;
+  let lo=[1e9,1e9],hi=[-1e9,-1e9],vlo=1e9,vhi=-1e9;
+  for(const p of V){lo[0]=Math.min(lo[0],p[a1]);lo[1]=Math.min(lo[1],p[a2]);hi[0]=Math.max(hi[0],p[a1]);hi[1]=Math.max(hi[1],p[a2]);vlo=Math.min(vlo,p[vi]);vhi=Math.max(vhi,p[vi]);}
+  const cx=(lo[0]+hi[0])/2, cy=(lo[1]+hi[1])/2, H0=Math.max(1e-6,vhi-vlo);
+  const grid=new Float32Array(thBins*zBins).fill(-1);
+  const samp=p=>{const h=p[vi]-vlo,x=p[a1]-cx,y=p[a2]-cy;
+    let zb=Math.floor(h/H0*(zBins-1));zb=zb<0?0:zb>zBins-1?zBins-1:zb;
+    let th=Math.atan2(y,x);if(th<0)th+=2*Math.PI;let tb=Math.floor(th/(2*Math.PI)*thBins)%thBins;
+    const r=Math.hypot(x,y),id=zb*thBins+tb;if(r>grid[id])grid[id]=r;};
+  for(const f of F){const a=V[f[0]],b=V[f[1]],c=V[f[2]];if(!a||!b||!c)continue;
+    // 依三角面垂直跨越的層數自動加密:每一層都取樣到,避免空層被補成柱子
+    const hspan=Math.max(Math.abs(a[vi]-b[vi]),Math.abs(b[vi]-c[vi]),Math.abs(c[vi]-a[vi]));
+    const N=Math.min(28,Math.max(1,Math.ceil(hspan/H0*zBins)+1));
+    for(let u=0;u<=N;u++)for(let v=0;v<=N-u;v++){const wu=u/N,wv=v/N,ww=1-wu-wv;
+      samp([a[0]*ww+b[0]*wu+c[0]*wv, a[1]*ww+b[1]*wu+c[1]*wv, a[2]*ww+b[2]*wu+c[2]*wv]);}}
+  // 圓周方向補洞
+  for(let z=0;z<zBins;z++){let any=false;for(let t=0;t<thBins;t++)if(grid[z*thBins+t]>=0){any=true;break;}if(!any)continue;
+    for(let t=0;t<thBins;t++){if(grid[z*thBins+t]>=0)continue;
+      for(let d=1;d<=thBins;d++){const l=grid[z*thBins+((t-d+thBins)%thBins)],r=grid[z*thBins+((t+d)%thBins)];if(l>=0){grid[z*thBins+t]=l;break;}if(r>=0){grid[z*thBins+t]=r;break;}}}}
+  // 垂直方向補洞:空層改用上下兩個實層「內插」,不再複製整列(避免形成柱子)
+  const rowFilled=z=>grid[z*thBins]>=0;
+  for(let z=0;z<zBins;z++){if(rowFilled(z))continue;
+    let zA=-1,zB=-1;for(let d=1;d<zBins;d++){if(zA<0&&z-d>=0&&rowFilled(z-d))zA=z-d;if(zB<0&&z+d<zBins&&rowFilled(z+d))zB=z+d;if(zA>=0&&zB>=0)break;}
+    if(zA>=0&&zB>=0){const t0=(z-zA)/(zB-zA);for(let t=0;t<thBins;t++)grid[z*thBins+t]=grid[zA*thBins+t]*(1-t0)+grid[zB*thBins+t]*t0;}
+    else{const s=zA>=0?zA:zB;if(s>=0)for(let t=0;t<thBins;t++)grid[z*thBins+t]=grid[s*thBins+t];}}
+  let maxR=0;for(const v of grid)if(v>maxR)maxR=v;
+  return {grid,thBins,zBins,H0,maxR:maxR||1};
+}
+function objScale(){return ENV?P.height/ENV.H0:1;}
+function harm(theta,frac,seed){
+  const F=[[3,2],[5,3],[8,5],[13,8]];let s=0,a=1,tot=0;
+  for(let k=0;k<F.length;k++){const ht=F[k][0],hz=F[k][1];s+=a*Math.sin(ht*theta+2*Math.PI*hz*frac+seed*(k+1));tot+=a;a*=0.55;}
+  return s/tot;
+}
+function texOffset(theta,frac){
+  const st=P.tex, amp=P.texAmp;
+  if(st==='none'||amp<=0)return 0;
+  if(st==='water'){const rings=Math.sin(2*Math.PI*9*frac+0.6*Math.sin(2*theta));return amp*(0.75*rings+0.25*harm(theta,frac,1));}
+  if(st==='flame'){let f=Math.max(0,harm(theta,frac*0.55,7));f=Math.pow(f,0.7);const lick=0.5+0.5*Math.sin(6*theta+6*frac);return amp*f*lick*(0.45+0.55*(1-frac));}
+  if(st==='vein'){const n=harm(theta,frac,3);return amp*(Math.pow(1-Math.abs(n),3)-0.35);}
+  return 0;
+}
+function buildGridFromPoints(pts,cx,cy,thBins,zBins,zmin,zmax){
+  const H=Math.max(1e-6,zmax-zmin), grid=new Float32Array(thBins*zBins).fill(-1);
+  for(const p of pts){const x=p[0]-cx,y=p[1]-cy;
+    let zb=Math.floor((p[2]-zmin)/H*(zBins-1));zb=zb<0?0:zb>zBins-1?zBins-1:zb;
+    let th=Math.atan2(y,x);if(th<0)th+=2*Math.PI;let tb=Math.floor(th/(2*Math.PI)*thBins)%thBins;
+    const r=Math.hypot(x,y),id=zb*thBins+tb;if(r>grid[id])grid[id]=r;}
+  for(let z=0;z<zBins;z++){let any=false;for(let t=0;t<thBins;t++)if(grid[z*thBins+t]>=0){any=true;break;}if(!any)continue;
+    for(let t=0;t<thBins;t++){if(grid[z*thBins+t]>=0)continue;
+      for(let d=1;d<=thBins;d++){const l=grid[z*thBins+((t-d+thBins)%thBins)],r=grid[z*thBins+((t+d)%thBins)];if(l>=0){grid[z*thBins+t]=l;break;}if(r>=0){grid[z*thBins+t]=r;break;}}}}
+  for(let z=0;z<zBins;z++){if(grid[z*thBins]>=0)continue;let src=-1;
+    for(let d=1;d<zBins;d++){if(z-d>=0&&grid[(z-d)*thBins]>=0){src=z-d;break;}if(z+d<zBins&&grid[(z+d)*thBins]>=0){src=z+d;break;}}
+    if(src>=0)for(let t=0;t<thBins;t++)grid[z*thBins+t]=grid[src*thBins+t];}
+  let maxR=0;for(const v of grid)if(v>maxR)maxR=v;
+  return {grid,thBins,zBins,zmin,zmax,maxR:maxR||1};
+}
+function parseGcode(text){
+  const lines=text.split(/\r?\n/);
+  let x=0,y=0,z=0,rel=true,beginSeen=false;
+  const pts=[]; let sumE=0,nozzle=null,bed=null,timeR=null,params=null,srcTool=false,srcMode='';
+  for(const raw of lines){
+    const l=raw.trim();
+    if(l[0]===';'){
+      if(l.includes('Vase Studio')){srcTool=true;if(l.includes('from OBJ'))srcMode='OBJ';else if(l.includes('parametric'))srcMode='參數';}
+      if(l.includes('----- begin'))beginSeen=true;
+      const pm=l.match(/VASE_PARAMS:\s*(\{.*\})/);if(pm){try{params=JSON.parse(pm[1]);}catch(e){}}
+      continue;
+    }
+    if(l.startsWith('M83'))rel=true; else if(l.startsWith('M82'))rel=false;
+    let m;
+    if((m=l.match(/^M104\s+S([\d.]+)/))&&+m[1]>=170)nozzle=+m[1];
+    if((m=l.match(/^M140\s+S([\d.]+)/))&&+m[1]>0)bed=+m[1];
+    if(timeR===null&&(m=l.match(/^M73\s+P\d+\s+R(\d+)/)))timeR=+m[1];
+    if(/^G[01]\b/.test(l)){
+      const gx=l.match(/X(-?[\d.]+)/),gy=l.match(/Y(-?[\d.]+)/),gz=l.match(/Z(-?[\d.]+)/),ge=l.match(/E(-?[\d.]+)/);
+      const nx=gx?+gx[1]:x,ny=gy?+gy[1]:y,nz=gz?+gz[1]:z,e=ge?+ge[1]:0,extr=e>0.0001;
+      if(extr)sumE+=rel?e:Math.max(0,e);
+      if(extr&&(beginSeen||ny>20)&&nz>0.05)pts.push([nx,ny,nz]);
+      x=nx;y=ny;z=nz;
+    }
+  }
+  let minx=1e9,maxx=-1e9,miny=1e9,maxy=-1e9,minz=1e9,maxz=-1e9;
+  for(const p of pts){minx=Math.min(minx,p[0]);maxx=Math.max(maxx,p[0]);miny=Math.min(miny,p[1]);maxy=Math.max(maxy,p[1]);minz=Math.min(minz,p[2]);maxz=Math.max(maxz,p[2]);}
+  const cx=(minx+maxx)/2,cy=(miny+maxy)/2;let maxR=0;for(const p of pts)maxR=Math.max(maxR,Math.hypot(p[0]-cx,p[1]-cy));
+  return {pts,nozzle,bed,timeR,params,srcTool,srcMode,cx,cy,dia:2*maxR,height:maxz-minz,minz,maxz,filMM:sumE};
+}
+function radiusAt(frac,theta){
+  if(mode==='gcode'){
+    if(!GENV)return 10;
+    const {grid,thBins,zBins}=GENV;
+    const zf=frac*(zBins-1),z0=Math.floor(zf),z1=Math.min(zBins-1,z0+1),zt=zf-z0;
+    let tf=(theta/(2*Math.PI))*thBins;tf=((tf%thBins)+thBins)%thBins;
+    const t0=Math.floor(tf)%thBins,t1=(t0+1)%thBins,tt=tf-Math.floor(tf);
+    const g=(z,t)=>grid[z*thBins+t];
+    const A=g(z0,t0)*(1-tt)+g(z0,t1)*tt,B=g(z1,t0)*(1-tt)+g(z1,t1)*tt;
+    return Math.max(0.8,A*(1-zt)+B*zt);
+  }
+  let base;
+  if(mode==='param'){
+    base=P.baseR+frac*(P.topR-P.baseR);
+  }else{
+    if(!ENV)return 10;
+    const {grid,thBins,zBins}=ENV, sc=objScale();
+    const zf=frac*(zBins-1),z0=Math.floor(zf),z1=Math.min(zBins-1,z0+1),zt=zf-z0;
+    let tf=(theta/(2*Math.PI))*thBins;tf=((tf%thBins)+thBins)%thBins;
+    const t0=Math.floor(tf)%thBins,t1=(t0+1)%thBins,tt=tf-Math.floor(tf);
+    const g=(z,t)=>grid[z*thBins+t];
+    const A=g(z0,t0)*(1-tt)+g(z0,t1)*tt, B=g(z1,t0)*(1-tt)+g(z1,t1)*tt;
+    base=(A*(1-zt)+B*zt)*sc;
+  }
+  // ----- 共用圖樣（兩種模式都套用）-----
+  if(P.profile==='barrel') base*=1+P.profileAmt*Math.sin(Math.PI*frac);
+  else if(P.profile==='hourglass') base*=1-P.profileAmt*Math.sin(Math.PI*frac);
+  base+=P.waveAmp*Math.sin(2*Math.PI*P.waveCount*frac);                 // 垂直波浪
+  base+=P.lobeDepth*Math.cos(P.lobes*theta+P.twist*Math.PI/180*frac);   // 花瓣+扭轉
+  base+=texOffset(theta,frac);                                          // 紋路風格
+  // 鎖定頂部開口半徑 = 10mm(放燈用):頂端約 22% 平順收束到 10mm
+  const wt=Math.max(0,(frac-0.78)/0.22); if(wt>0){const s=wt*wt*(3-2*wt); base=base*(1-s)+10*s;}
+  return Math.min(121,Math.max(0.8,base));
+}
+
+/* ---------- 螺旋點 / gcode ---------- */
+function spiralPoints(maxPts){
+  const cx=128,cy=128;
+  const stepsPerRev = mode==='obj' ? Math.max(120, ENV?ENV.thBins:180) : Math.max(80,Math.round(P.lobes*32));
+  const revs=P.height/P.layerHeight, N=Math.max(2,Math.round(revs*stepsPerRev));
+  const stride=maxPts?Math.max(1,Math.ceil(N/maxPts)):1, pts=[];
+  for(let i=0;i<=N;i+=stride){const frac=i/N,th=(i/stepsPerRev)*2*Math.PI,r=radiusAt(frac,th);
+    pts.push([cx+r*Math.cos(th),cy+r*Math.sin(th),P.firstZ+frac*(P.height-P.firstZ)]);}
+  pts._revs=revs;return pts;
+}
+function buildGcode(){
+  const filA=Math.PI*Math.pow(P.filamentD/2,2), pts=spiralPoints(null);
+  let len=0;for(let i=1;i<pts.length;i++){const a=pts[i-1],b=pts[i];len+=Math.hypot(b[0]-a[0],b[1]-a[1],b[2]-a[2]);}
+  const startupSec=P.bedMesh?210:75, totalSec=len/P.speed+startupSec, totalMin=Math.max(1,Math.round(totalSec/60));
+  const feed=Math.round(P.speed*60),feed1=Math.round(P.firstSpeed*60);
+  const g=[];
+  g.push("; ===== Bambu Lab A1 — FAST START (calibration skipped) =====");
+  g.push("; spiral vase, single-wall | "+(mode==='obj'?'from OBJ':'parametric')+" | Vase Studio");
+  g.push("; VASE_PARAMS: "+JSON.stringify({mode:mode,material:material,baseR:P.baseR,topR:P.topR,height:P.height,lobes:P.lobes,lobeDepth:P.lobeDepth,twist:P.twist,waveAmp:P.waveAmp,waveCount:P.waveCount,profile:P.profile,profileAmt:P.profileAmt,tex:P.tex,texAmp:P.texAmp,layerHeight:P.layerHeight,lineWidth:P.lineWidth,nozzle:P.nozzle,bed:P.bed,speed:P.speed}));
+  g.push("M73 P0 R"+totalMin,"G90","G21","M83");
+  g.push("M17 X0.65 Y1.2 Z0.6 ; A1 default motor current");
+  g.push("M104 S150 ; preheat (avoid ooze while homing)");
+  g.push("M140 S"+P.bed,"M190 S"+P.bed+" ; wait bed","M109 S150 ; wait preheat");
+  g.push("G28 ; home all (A1 load-cell Z homing = bed surface)");
+  if(P.bedMesh)g.push("G29 ; bed mesh");
+  g.push("M104 S"+P.nozzle,"M109 S"+P.nozzle+" ; wait nozzle to print temp");
+  g.push("; ----- purge line on front edge -----","M107 ; first-layer fan OFF","G1 Z0.3 F900","G1 X20 Y6 F18000","G1 Z0.3 F900");
+  g.push("G1 X160 Y6 E18 F1200 ; purge 1","G1 X160 Y6.6 F1200","G1 X30 Y6.6 E14 F1200 ; purge 2","G1 Z1 F900");
+  g.push("; ----- begin -----");
+  const s=pts[0];g.push(`G0 F18000 X${s[0].toFixed(3)} Y${s[1].toFixed(3)} Z${s[2].toFixed(3)}`);
+  g.push("G1 E0.6 F1800 ; prime",`G1 F${feed1}`);
+  let totalE=0,fanDone=false,acc=0,emit=0;
+  for(let i=1;i<pts.length;i++){const a=pts[i-1],b=pts[i],d=Math.hypot(b[0]-a[0],b[1]-a[1],b[2]-a[2]);
+    const e=d*P.lineWidth*P.layerHeight/filA*(P.flow/100);totalE+=e;
+    if(!fanDone&&b[2]>0.6){g.push("M106 S"+Math.round(P.fan*255/100)+" ; fan on");fanDone=true;}
+    g.push(`G1 X${b[0].toFixed(3)} Y${b[1].toFixed(3)} Z${b[2].toFixed(3)} E${e.toFixed(5)}`);
+    acc+=d/P.speed;if(acc-emit>=30){const pr=Math.min(99,Math.round((startupSec+acc)/totalSec*100));const rem=Math.max(0,Math.round((totalSec-startupSec-acc)/60));g.push(`M73 P${pr} R${rem}`);emit=acc;}}
+  g.push("; ===== A1 END =====","M73 P100 R0","G91","G1 Z10 F900","G90");
+  g.push("M104 S0 ; nozzle off","M140 S0 ; bed off","M106 S0 ; fan off","G1 X10 Y250 F12000 ; present bed","M84 ; motors off","; done");
+  const grams=totalE*filA/1000*P.density;
+  return {gcode:g.join("\n"),totalMin,filMM:totalE,grams,layers:Math.round(pts._revs)};
+}
+function updateStats(){
+  if(mode==='gcode'){
+    if(!GINFO){s_dia.textContent=s_h.textContent=s_layers.textContent=s_time.textContent=s_fil.textContent=s_g.textContent='–';return;}
+    const filA=Math.PI*Math.pow(P.filamentD/2,2), grams=GINFO.filMM*filA/1000*P.density;
+    const min=GINFO.timeR!=null?GINFO.timeR:Math.round(GINFO.height/2);
+    const layers=Math.max(1,Math.round(GINFO.height/(P.layerHeight||0.2)));
+    s_dia.innerHTML=GINFO.dia.toFixed(0)+'<small> mm</small>';s_h.innerHTML=GINFO.height.toFixed(0)+'<small> mm</small>';
+    s_layers.textContent=layers;s_time.innerHTML=min+'<small> 分</small>';
+    s_fil.innerHTML=(GINFO.filMM/1000).toFixed(1)+'<small> m</small>';s_g.innerHTML=grams.toFixed(1)+'<small> g</small>';
+    s_dia.className='v'+(GINFO.dia>250?' warn':'');
+    overTime=false;document.getElementById('dl').disabled=false;document.getElementById('dl').textContent='產生並下載 .gcode';document.getElementById('timewarn').style.display='none';
+    return;
+  }
+  const filA=Math.PI*Math.pow(P.filamentD/2,2), pts=spiralPoints(null);
+  let len=0;for(let i=1;i<pts.length;i++){const a=pts[i-1],b=pts[i];len+=Math.hypot(b[0]-a[0],b[1]-a[1],b[2]-a[2]);}
+  const totalE=len*P.lineWidth*P.layerHeight/filA*(P.flow/100), grams=totalE*filA/1000*P.density;
+  const min=Math.max(1,Math.round((len/P.speed+(P.bedMesh?210:75))/60));
+  const pmul = P.profile==='barrel'?1+P.profileAmt:1;
+  const tex = P.tex==='none'?0:P.texAmp;
+  const dia = mode==='obj'&&ENV ? 2*(ENV.maxR*objScale()*pmul+P.lobeDepth+P.waveAmp+tex) : 2*(Math.max(P.baseR,P.topR)*pmul+P.lobeDepth+P.waveAmp+tex);
+  s_dia.innerHTML=dia.toFixed(0)+'<small> mm</small>';s_h.innerHTML=P.height.toFixed(0)+'<small> mm</small>';
+  s_layers.textContent=Math.round(pts._revs);s_time.innerHTML=min+'<small> 分</small>';
+  s_fil.innerHTML=(totalE/1000).toFixed(1)+'<small> m</small>';s_g.innerHTML=grams.toFixed(1)+'<small> g</small>';
+  s_dia.className='v'+(dia>250?' warn':'');
+  // 列印時間閘門:超過上限就鎖住下載
+  overTime = min>MAX_MIN;
+  s_time.className = 'v'+(overTime?' warn':' hot');
+  const dlBtn=document.getElementById('dl'), tw=document.getElementById('timewarn');
+  dlBtn.disabled=overTime;
+  dlBtn.textContent=overTime?('超過 '+MAX_MIN+' 分 · 請調整'):'產生並下載 .gcode';
+  tw.style.display=overTime?'block':'none';
+  if(overTime) tw.innerHTML='⚠ 預估 <b>'+min+' 分</b>,超過 '+MAX_MIN+' 分鐘上限,無法列印。請把「底半徑」調小、或「層高」調大、或「列印速度」調快,直到 ≤ '+MAX_MIN+' 分。';
+}
+
+/* ---------- 預覽 ---------- */
+const cv=document.getElementById('stage'),ctx=cv.getContext('2d');
+let yaw=-0.6,spin=true,dragging=false,lastX=0,shadeMode=true;
+const MAX_MIN=12; let overTime=false;   // 列印時間上限(分鐘)
+const COOL=[111,208,192],WARM=[255,125,26];
+function lc(a,b,t){return a.map((v,i)=>Math.round(v+(b[i]-v)*t));}
+function sub(a,b){return [a[0]-b[0],a[1]-b[1],a[2]-b[2]];}
+function cross(a,b){return [a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];}
+function norm(v){const m=Math.hypot(v[0],v[1],v[2])||1;return [v[0]/m,v[1]/m,v[2]/m];}
+function setupCanvas(){const dpr=Math.min(2,window.devicePixelRatio||1),w=cv.clientWidth,h=cv.clientHeight;
+  cv.width=w*dpr;cv.height=h*dpr;ctx.setTransform(dpr,0,0,dpr,0,0);ctx.clearRect(0,0,w,h);return {w,h};}
+function drawEmpty(w,h,msg){
+  ctx.fillStyle='#6b5f49';ctx.font='500 15px ui-sans-serif,system-ui,"PingFang TC",sans-serif';
+  ctx.textAlign='center';ctx.textBaseline='middle';
+  ctx.fillText(msg,w/2,h/2-8);
+  ctx.fillStyle='#4a4132';ctx.font='12px ui-sans-serif,system-ui,sans-serif';
+  ctx.fillText('上傳後這裡會顯示模擬',w/2,h/2+16);
+  ctx.textAlign='start';ctx.textBaseline='alphabetic';
+}
+function draw(){ const {w,h}=setupCanvas();
+  if(mode==='obj'&&!ENV){drawEmpty(w,h,'尚未上傳 OBJ 檔');return;}
+  if(mode==='gcode'&&!GRAW){drawEmpty(w,h,'尚未匯入 G-code 檔');return;}
+  if(shadeMode)drawShaded(w,h); else drawLines(w,h); }
+
+function drawLines(w,h){
+  const pts = mode==='gcode' ? GRAW : spiralPoints(spin&&!dragging?12000:30000);
+  if(!pts||pts.length<2)return;
+  const cx=128,cy=128;let maxR=0,maxZ=0;for(const p of pts){maxR=Math.max(maxR,Math.hypot(p[0]-cx,p[1]-cy));maxZ=Math.max(maxZ,p[2]);}
+  const scale=Math.min((w*0.42)/(maxR||1),(h*0.78)/(maxZ||1)),ox=w/2,oy=h*0.86,ca=Math.cos(yaw),sa=Math.sin(yaw);
+  const grad=ctx.createLinearGradient(0,oy,0,oy-maxZ*scale);
+  grad.addColorStop(0,'rgb(111,208,192)');grad.addColorStop(1,'rgb(255,125,26)');
+  ctx.strokeStyle=grad;ctx.lineWidth=1;ctx.globalAlpha=0.85;ctx.beginPath();
+  for(let i=0;i<pts.length;i++){const p=pts[i];
+    const rx=(p[0]-cx)*ca-(p[1]-cy)*sa,ry=(p[0]-cx)*sa+(p[1]-cy)*ca;
+    const X=ox+rx*scale,Y=oy-p[2]*scale+ry*scale*0.42;
+    if(i===0)ctx.moveTo(X,Y);else ctx.lineTo(X,Y);}
+  ctx.stroke();ctx.globalAlpha=1;
+}
+
+function drawShaded(w,h){
+  const spinning=spin&&!dragging;
+  const TH = spinning?78:Math.min(190,Math.max(130,P.lobes*10));
+  const HT = spinning?58:Math.min(170,Math.max(110,P.waveCount*5));
+  const ca=Math.cos(yaw),sa=Math.sin(yaw);
+  const grid=[]; let maxR=0;
+  for(let j=0;j<=HT;j++){const frac=j/HT,z=P.firstZ+frac*(P.height-P.firstZ),row=[];
+    for(let i=0;i<=TH;i++){const th=i/TH*2*Math.PI,r=radiusAt(frac,th);maxR=Math.max(maxR,r);
+      const x=r*Math.cos(th),y=r*Math.sin(th);row.push([x*ca-y*sa, x*sa+y*ca, z]);}
+    grid.push(row);}
+  const scale=Math.min((w*0.42)/(maxR||1),(h*0.78)/(P.height||1)),ox=w/2,oy=h*0.86;
+  const proj=p=>[ox+p[0]*scale, oy-p[2]*scale+p[1]*scale*0.42];
+  const L=norm([-0.45,-0.5,0.74]);
+  const base=[233,150,74];
+  const shadeOf=(a,b,c)=>{const n=norm(cross(sub(b,a),sub(c,a)));return 0.30+0.70*Math.abs(n[0]*L[0]+n[1]*L[1]+n[2]*L[2]);};
+  const faces=[];
+  for(let j=0;j<HT;j++)for(let i=0;i<TH;i++){
+    const a=grid[j][i],b=grid[j][i+1],c=grid[j+1][i+1],d=grid[j+1][i];
+    faces.push({q:[proj(a),proj(b),proj(c),proj(d)],inten:shadeOf(a,b,d),depth:(a[1]+b[1]+c[1]+d[1])/4,zt:((a[2]+c[2])/2)/P.height});
+  }
+  // 封頂 + 封底 → 封閉實心,看不到內壁、也不用剔除任何面
+  const zb=grid[0][0][2], zt=grid[HT][0][2], cB=[0,0,zb], cT=[0,0,zt];
+  for(let i=0;i<TH;i++){
+    const a=grid[0][i],b=grid[0][i+1];
+    faces.push({q:[proj(cB),proj(a),proj(b)],inten:shadeOf(cB,a,b)*0.9,depth:(cB[1]+a[1]+b[1])/3,zt:0});
+    const c=grid[HT][i],d=grid[HT][i+1];
+    faces.push({q:[proj(cT),proj(c),proj(d)],inten:shadeOf(cT,c,d),depth:(cT[1]+c[1]+d[1])/3,zt:1});
+  }
+  faces.sort((A,B)=>B.depth-A.depth);
+  for(const o of faces){
+    const r=Math.min(255,base[0]*o.inten+16*o.zt),g=Math.min(255,base[1]*o.inten+12*o.zt),b2=Math.min(255,base[2]*o.inten+6*o.zt);
+    ctx.fillStyle=ctx.strokeStyle=`rgb(${r|0},${g|0},${b2|0})`;ctx.lineWidth=0.5;
+    const q=o.q;ctx.beginPath();ctx.moveTo(q[0][0],q[0][1]);for(let k=1;k<q.length;k++)ctx.lineTo(q[k][0],q[k][1]);ctx.closePath();ctx.fill();ctx.stroke();
+  }
+}
+function loop(){if(spin&&!dragging){yaw+=shadeMode?0.008:0.006;draw();}requestAnimationFrame(loop);}
+
+/* ---------- UI ---------- */
+function applyModeUI(){
+  document.querySelectorAll('#modeseg button').forEach(b=>b.classList.toggle('on',b.dataset.mode===mode));
+  const imp = mode==='gcode';
+  document.getElementById('gcodegroup').classList.toggle('hidden',!imp);
+  document.getElementById('objgroup').classList.toggle('hidden',mode!=='obj');
+  document.getElementById('shapegroup').classList.toggle('hidden',mode!=='param');
+  document.getElementById('patterngroup').classList.toggle('hidden',imp);
+  document.querySelectorAll('.designctrl').forEach(el=>el.classList.toggle('hidden',imp));
+  document.getElementById('actions').classList.toggle('hidden',imp);
+  document.getElementById('gcpreview').classList.toggle('hidden',imp);
+  document.getElementById('hlabel').textContent = mode==='obj'?'目標高度 🔒 (40mm)':'高度 🔒';
+  document.getElementById('patternhint').textContent = mode==='obj'?'· 疊加在模型外形上':'';
+}
+function syncInputs(){
+  document.querySelectorAll('[data-k]').forEach(el=>{const k=el.dataset.k;if(el.type==='checkbox')el.checked=!!P[k];else el.value=P[k];});
+  document.querySelectorAll('[data-n]').forEach(el=>el.value=P[el.dataset.n]);
+  document.querySelectorAll('#matseg button').forEach(b=>b.classList.toggle('on',b.dataset.mat===material));
+  document.querySelectorAll('[data-axis]').forEach(b=>b.classList.toggle('on',b.dataset.axis===upAxis));
+  document.querySelectorAll('[data-profile]').forEach(b=>b.classList.toggle('on',b.dataset.profile===P.profile));
+  document.querySelectorAll('[data-tex]').forEach(b=>b.classList.toggle('on',b.dataset.tex===P.tex));
+}
+function refresh(){updateStats();draw();}
+document.querySelectorAll('input[type=range]').forEach(r=>r.addEventListener('input',e=>{const k=e.target.dataset.k;P[k]=parseFloat(e.target.value);const n=document.querySelector(`[data-n="${k}"]`);if(n)n.value=P[k];refresh();}));
+document.querySelectorAll('.num').forEach(n=>n.addEventListener('change',e=>{const k=e.target.dataset.n;let v=parseFloat(e.target.value);if(isNaN(v))return;P[k]=v;const r=document.querySelector(`input[type=range][data-k="${k}"]`);if(r)r.value=v;refresh();}));
+document.querySelector('[data-k="bedMesh"]').addEventListener('change',e=>{P.bedMesh=e.target.checked;refresh();});
+document.querySelectorAll('[data-profile]').forEach(b=>b.addEventListener('click',()=>{P.profile=b.dataset.profile;syncInputs();refresh();}));
+document.querySelectorAll('[data-tex]').forEach(b=>b.addEventListener('click',()=>{P.tex=b.dataset.tex;syncInputs();refresh();}));
+const PRESETS={
+  ripple:{baseR:20,topR:20,lobes:0,lobeDepth:0,twist:0,waveCount:16,waveAmp:2.2,profile:'straight',profileAmt:0.25},
+  petal:{baseR:16,topR:20,lobes:6,lobeDepth:3.5,twist:360,waveCount:0,waveAmp:0,profile:'straight',profileAmt:0.25},
+  barrel:{baseR:18,topR:18,lobes:0,lobeDepth:0,twist:0,waveCount:10,waveAmp:1.6,profile:'barrel',profileAmt:0.4},
+  star:{baseR:18,topR:18,lobes:5,lobeDepth:6,twist:0,waveCount:0,waveAmp:0,profile:'straight',profileAmt:0.25},
+  twistwave:{baseR:15,topR:15,lobes:8,lobeDepth:2,twist:720,waveCount:20,waveAmp:1.2,profile:'hourglass',profileAmt:0.3}
+};
+document.querySelectorAll('[data-preset]').forEach(b=>b.addEventListener('click',()=>{
+  Object.assign(P,PRESETS[b.dataset.preset]);mode='param';applyModeUI();syncInputs();refresh();
+  document.querySelectorAll('[data-preset]').forEach(x=>x.classList.toggle('on',x===b));
+}));
+document.querySelectorAll('#matseg button').forEach(b=>b.addEventListener('click',()=>{material=b.dataset.mat;const m=MAT[material];P.nozzle=m.nozzle;P.bed=m.bed;P.density=m.density;syncInputs();refresh();}));
+document.querySelectorAll('#modeseg button').forEach(b=>b.addEventListener('click',()=>{
+  if(b.dataset.mode==='obj'&&!ENV){mode='obj';applyModeUI();toast('請上傳一個 .obj 檔');refresh();return;}
+  if(b.dataset.mode==='gcode'&&!GRAW){mode='gcode';applyModeUI();updateStats();toast('請匯入一個 .gcode 檔');return;}
+  mode=b.dataset.mode;if(mode!=='gcode'){P.height=40;P.firstZ=0.2;}applyModeUI();refresh();}));
+document.querySelectorAll('[data-axis]').forEach(b=>b.addEventListener('click',()=>{upAxis=b.dataset.axis;if(RAW){ENV=buildEnvelope(RAW.V,RAW.F,upAxis);}syncInputs();refresh();}));
+
+/* 上傳 */
+const drop=document.getElementById('drop'),fileIn=document.getElementById('file');
+drop.addEventListener('click',()=>fileIn.click());
+['dragover','dragenter'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.add('over');}));
+['dragleave','drop'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.remove('over');}));
+drop.addEventListener('drop',e=>{const f=e.dataTransfer.files[0];if(f)loadFile(f);});
+fileIn.addEventListener('change',e=>{const f=e.target.files[0];if(f)loadFile(f);});
+function loadFile(f){
+  if(!/\.obj$/i.test(f.name)){toast('請選擇 .obj 檔');return;}
+  const rd=new FileReader();
+  rd.onload=()=>{try{
+    const {V,F}=parseOBJ(rd.result);
+    if(V.length<3||F.length<1){toast('OBJ 解析失敗或無面');return;}
+    RAW={V,F};ENV=buildEnvelope(V,F,upAxis);mode='obj';
+    GRAW=null;GENV=null;GINFO=null; // 清掉先前匯入的 gcode 狀態
+    P.waveAmp=0;P.lobeDepth=0;P.twist=0;P.profile='straight';P.tex='none'; // 先呈現模型原貌,圖樣由學生自行疊加
+    P.height=40;P.firstZ=0.2; // 鎖定高度 40mm
+    document.getElementById('chip').style.display='flex';
+    document.getElementById('fname').textContent=f.name;
+    document.getElementById('fmeta').textContent=V.length+' 點 / '+F.length+' 面';
+    applyModeUI();syncInputs();refresh();
+    toast('已載入 · '+F.length+' 面');
+  }catch(err){toast('讀取失敗');}};
+  rd.readAsText(f);
+}
+
+/* 匯入 G-code */
+const gdrop=document.getElementById('gdrop'),gfileIn=document.getElementById('gfile');
+gdrop.addEventListener('click',()=>gfileIn.click());
+['dragover','dragenter'].forEach(ev=>gdrop.addEventListener(ev,e=>{e.preventDefault();gdrop.classList.add('over');}));
+['dragleave','drop'].forEach(ev=>gdrop.addEventListener(ev,e=>{e.preventDefault();gdrop.classList.remove('over');}));
+gdrop.addEventListener('drop',e=>{const f=e.dataTransfer.files[0];if(f)loadGcode(f);});
+gfileIn.addEventListener('change',e=>{const f=e.target.files[0];if(f)loadGcode(f);});
+function loadGcode(f){
+  if(!/\.(gcode|gco|g)$/i.test(f.name)){toast('請選擇 .gcode 檔');return;}
+  const rd=new FileReader();
+  rd.onload=()=>{try{
+    const r=parseGcode(rd.result);
+    if(r.pts.length<10){toast('這個檔找不到列印路徑');return;}
+    // 置中到 128,128 供預覽
+    GRAW=r.pts.map(p=>[p[0]-r.cx+128,p[1]-r.cy+128,p[2]]);
+    GENV=buildGridFromPoints(GRAW,128,128,180,240,r.minz,r.maxz);
+    GINFO=r; mode='gcode';
+    P.firstZ=r.minz; P.height=r.height;
+    if(r.params){ if(r.params.layerHeight)P.layerHeight=r.params.layerHeight; if(r.params.density)P.density=r.params.density; }
+    document.getElementById('gchip').style.display='flex';
+    document.getElementById('gfname').textContent=f.name;
+    document.getElementById('gfmeta').textContent=(r.pts.length/1000|0)+'k 點';
+    renderGInfo(r);
+    applyModeUI();updateStats();draw();
+    toast('已匯入 · '+(r.srcTool?'本工具產生':'其他來源'));
+  }catch(err){toast('解析失敗');}};
+  rd.readAsText(f);
+}
+function renderGInfo(r){
+  const row=(k,v)=>`<div style="display:flex;justify-content:space-between;border-bottom:1px solid var(--line);padding:4px 0"><span style="color:var(--muted)">${k}</span><span style="font-family:var(--mono);color:var(--ink)">${v}</span></div>`;
+  let html=row('來源', r.srcTool?('本工具'+(r.srcMode?' · '+r.srcMode+'模式':'')):'其他軟體');
+  html+=row('噴頭 / 熱床', (r.nozzle??'?')+'°C / '+(r.bed??'?')+'°C');
+  const p=r.params;
+  if(p){
+    html+='<div style="margin:8px 0 4px;color:var(--accent2);font-family:var(--mono);font-size:11px;letter-spacing:.1em">還原的設計設定</div>';
+    if(p.material)html+=row('材料',p.material);
+    html+=row('層高 / 線寬',(p.layerHeight??'?')+' / '+(p.lineWidth??'?')+' mm');
+    if(p.mode!=='obj')html+=row('底/頂半徑',(p.baseR??'?')+' / '+(p.topR??'?')+' mm');
+    html+=row('花瓣',(p.lobes??0)+' 瓣 · 深 '+(p.lobeDepth??0)+' mm');
+    html+=row('波浪',(p.waveCount??0)+' 道 · 深 '+(p.waveAmp??0)+' mm');
+    html+=row('扭轉',(p.twist??0)+'°');
+    const texName={none:'無',flame:'火焰',water:'水波',vein:'葉脈'}[p.tex]||p.tex||'無';
+    html+=row('紋路',texName+(p.tex&&p.tex!=='none'?' · 強 '+(p.texAmp??0)+' mm':''));
+    const profName={straight:'直筒',barrel:'鼓形',hourglass:'沙漏'}[p.profile]||p.profile||'直筒';
+    html+=row('輪廓',profName);
+    html+=row('列印速度',(p.speed??'?')+' mm/s');
+  }else{
+    html+='<div style="margin-top:8px;color:var(--muted);font-size:12px">此檔沒有內嵌設計參數(可能是舊版或別的軟體切的),以下數據由走線推算,右側為實際走線模擬。</div>';
+  }
+  document.getElementById('ginfo').innerHTML=html;
+}
+cv.addEventListener('pointerdown',e=>{dragging=true;lastX=e.clientX;cv.classList.add('drag');cv.setPointerCapture(e.pointerId);});
+cv.addEventListener('pointermove',e=>{if(!dragging)return;yaw+=(e.clientX-lastX)*0.01;lastX=e.clientX;draw();});
+cv.addEventListener('pointerup',()=>{dragging=false;cv.classList.remove('drag');});
+document.getElementById('spin').addEventListener('click',e=>{spin=!spin;e.target.textContent='自動旋轉：'+(spin?'開':'關');draw();});
+document.getElementById('v_lines').addEventListener('click',()=>{shadeMode=false;document.getElementById('v_lines').classList.add('on');document.getElementById('v_shade').classList.remove('on');draw();});
+document.getElementById('v_shade').addEventListener('click',()=>{shadeMode=true;document.getElementById('v_shade').classList.add('on');document.getElementById('v_lines').classList.remove('on');draw();});
+
+function toast(m){const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),1900);}
+let lastG="";
+function generate(){const r=buildGcode();lastG=r.gcode;document.getElementById('preview').textContent=r.gcode.split("\n").slice(0,60).join("\n")+"\n…";return r;}
+document.getElementById('dl').addEventListener('click',()=>{const r=generate();
+  if(mode!=='gcode' && r.totalMin>MAX_MIN){toast('預估 '+r.totalMin+' 分,超過 '+MAX_MIN+' 分上限,請先調整參數');return;}
+  const blob=new Blob([r.gcode],{type:'text/plain'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);
+  const base = mode==='obj'?'vase_obj':'vase';a.download=`${base}_${P.height}mm_A1.gcode`;a.click();URL.revokeObjectURL(a.href);toast(`已下載 · 約 ${r.totalMin} 分 · ${r.grams.toFixed(1)} g`);});
+document.getElementById('cp').addEventListener('click',async()=>{if(!lastG)generate();try{await navigator.clipboard.writeText(lastG);toast('已複製 G-code');}catch{toast('複製失敗,請用下載');}});
+
+window.addEventListener('resize',draw);
+applyModeUI();syncInputs();refresh();loop();
+</script>
