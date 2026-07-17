@@ -264,44 +264,454 @@ const MACHINE={
   P2S:{
     label:"Bambu P2S",
     bedX:256, bedY:256, bedZ:256,
-    startupNoMesh:175, startupMesh:190,  // P2S 一律做 G29 調平,啟動較久
-    maxMin:14,
-    presentBed:false,                    // CoreXY 床不外送,改抬 Z 停角落
-    alwaysLevel:true,                    // P2S 準確 Z 靠 G29,強制執行
-    note:"封閉 CoreXY。⚠ 兩大重點:(1) 絕不能用 A1 的 per-axis 馬達電流;(2) P2S 的 G28 Z 只是低精度粗歸零,準確的第一層 Z=0 必須靠 G29 觸床建立——所以 P2S 一律強制執行 G29(這就是之前「騰空」的原因)。印 PLA 已自動加開輔助風扇 P2 對抗機箱熱累積(第四層以上牽絲的解法);建議連同「前門開一條縫」散熱更佳。第一次列印請留在電源開關旁觀察第一層。",
-    // 風扇:P2S 封閉機箱 → 零件風扇 P1 + 輔助風扇 P2(對抗機箱熱累積,PLA 最需要)
-    // P1=零件風扇, P2=輔助側吹風扇, P3=機箱抽風
-    auxByMat:{PLA:80,PETG:30,TPU:0},   // 輔助風扇 %:PLA 全力吹,PETG 少一點,TPU 關
+    startupNoMesh:320, startupMesh:320,   // 真實原廠起始含完整校正
+    maxMin:20,
+    presentBed:false,
+    alwaysLevel:true,
+    note:"使用你 Bambu Studio 檔案中的真實 P2S 原廠起始/結尾碼(含壓力提前 M983.3、輸入整形 M975、擦嘴 G150、床面調平 G29 與 Textured PEI 板 Z 補償)。這是你機器實際印得動的那套起手式,牽絲應大幅改善。溫度依所選材料帶入;床面調平區域已改為置中通用範圍。⚠ 起始含完整校正,約需 4–6 分。第一次列印請留在電源開關旁。",
+    auxByMat:{PLA:0,PETG:0,TPU:0},   // 先關輔助風扇:層間融合優先(與成功檔一致);牽絲問題日後再議
     fanOnLines(P,mat){
       const aux=this.auxByMat[mat]??60;
       const L=["M106 P1 S"+Math.round(P.fan*255/100)+" ; part cooling fan (P1)"];
-      if(aux>0)L.push("M106 P2 S"+Math.round(aux*255/100)+" ; AUX fan (P2) — 對抗封閉機箱熱累積 ("+mat+")");
+      if(aux>0)L.push("M106 P2 S"+Math.round(aux*255/100)+" ; AUX fan (P2) — enclosure heat-soak ("+mat+")");
       return L;
     },
     fanOff:"M106 P1 S0 ; first-layer part fan OFF",
-    start(P){
-      const g=[];
-      g.push("; ===== Bambu Lab P2S — FAST START (heavy calibration skipped) =====");
-      g.push("M17 ; enable steppers at DEFAULT current (CoreXY — NEVER set A1 per-axis current)");
-      g.push("M140 S"+P.bed+" ; heat bed first (Bambu order)");
-      g.push("M104 S140 ; soft-preheat nozzle (hot enough to home, not oozing)");
-      g.push("M109 S140 ; wait nozzle 140");
-      g.push("G28 ; home all axes (Z here is LOW-precision rough home only)");
-      g.push("G29 ; REQUIRED on P2S — bed leveling touches off the load cell to set the");
-      g.push(";     accurate first-layer Z=0. Skipping it leaves Z rough/high → prints in air.");
-      g.push("M190 S"+P.bed+" ; ensure bed at target");
-      g.push("M104 S"+P.nozzle,"M109 S"+P.nozzle+" ; heat nozzle to print temp");
-      return g;
-    },
-    end(P){
-      const g=[];
-      g.push("; ===== P2S END =====","M73 P100 R0");
-      g.push("M104 S0 ; nozzle off","M140 S0 ; bed off","M106 P1 S0 ; part fan off","M106 P2 S0 ; aux fan off");
-      g.push("G91","G1 Z20 F900 ; lift","G90");
-      g.push("G1 X128 Y250 F12000 ; park toolhead to back (enclosed — bed stays put)");
-      g.push("M84 ; motors off","; done");
-      return g;
-    }
+    // ↓↓↓ 真實 Bambu Studio P2S 原廠起始碼(溫度/調平區域已參數化) ↓↓↓
+    start(P){ const nz=P.nozzle, bd=P.bed; return (`M201 X20000 Y20000 Z500 E5000
+M203 X600 Y600 Z20 E30
+M204 P20000 R5000 T20000
+M205 X9.00 Y9.00 Z3.00 E2.50
+M106 S0
+M106 P2 S0
+; FEATURE: Custom
+;M1002 set_flag extrude_cali_flag=1
+;M1002 set_flag g29_before_print_flag=1
+;M1002 set_flag auto_cali_toolhead_offset_flag=1
+;M1002 set_flag build_plate_detect_flag=1
+
+;======== P2S start gcode==========
+;===== 2026/02/26 =====
+  
+  M140 S${bd} ; heat heatbed first
+  M993 A0 B0 C0 ; nozzle cam detection not allowed.
+  M400
+
+;=====printer start sound ===================
+M17
+M400 S1
+M1006 S1
+M1006 A53 B9 L50 C53 D9 M50 E53 F9 N50 
+M1006 A56 B9 L50 C56 D9 M50 E56 F9 N50 
+M1006 A61 B9 L50 C61 D9 M50 E61 F9 N50 
+M1006 A53 B9 L50 C53 D9 M50 E53 F9 N50 
+M1006 A56 B9 L50 C56 D9 M50 E56 F9 N50 
+M1006 A61 B18 L50 C61 D18 M50 E61 F18 N50 
+M1006 W
+;=====printer start sound ===================
+
+  M620 M ;enable remap
+  G389
+
+;===== avoid end stop =================
+  G91
+  G380 S2 Z22 F1200
+  G380 S2 Z-12 F1200
+  G90
+;===== avoid end stop =================
+
+;===== reset machine status =================
+  M204 S10000
+  M630 S0 P1
+  G90
+  M17 D ; reset motor current to default
+  M960 S5 P1 ; turn on logo lamp
+  G90
+  M220 S100 ;Reset Feedrate
+  M1002 set_gcode_claim_speed_level: 5
+  M221 S100 ;Reset Flowrate
+  M73.2   R1.0 ;Reset left time magnitude
+  G29.1 Z0 ; clear z-trim value first
+  M983.1 M1
+  M982.2 S1 ; turn on cog noise reduction
+  M983.4 S0
+;===== reset machine status =================
+
+;==== set airduct mode ==== 
+;==== if Chamber Cooling is necessary ====
+
+
+M145 P0 ; set airduct mode to cooling mode for cooling
+M106 P2 S255 ; turn on auxiliary fan for cooling
+M106 P3 S127 ; turn on chamber fan for cooling
+M1002 gcode_claim_action : 29
+M191 S0 ; wait for chamber temp
+M106 P2 S102 ; turn on chamber cooling fan
+M622.1 S0
+M1002 judge_flag ventobox_replace_aux1_fan_flag
+M622 J0
+M106 P10 S0 ; turn off left aux fan
+M623
+M142 P6 R30 S40 U0.3 V0.8 ; set PETG exhaust chamber autocooling
+
+
+;==== set airduct mode ==== 
+
+;===== start to heat heatbed & hotend==========
+  M1002 gcode_claim_action : 2
+  M1002 set_filament_type:PLA
+  M104 S140 A        
+
+  G29.2 S0 ; avoid invalid abl data
+
+;===== first homing start =====
+  M1002 gcode_claim_action : 13
+  G28 X T300
+  G150.1 F8000 ; wipe mouth to avoid filament stick to heatbed
+  G150.3
+  M972 S24 P0
+  M972 S26 P0 C0
+  M972 S42 P0 T5000
+  G150.1 F8000 ; wipe mouth to avoid filament stick to heatbed
+  G90
+  G1 X128 Y128 F30000
+  G28 Z P0 T400
+  M400
+;===== first homign end =====
+
+;===== detection start =====
+  M1002 gcode_claim_action : 11
+  M104 S140 A ; rise temp in advance
+  M972 S19 P0 T5000 ;plate type detection
+  
+  
+;===== detection end =====
+
+;===== prepare print temperature and material ==========
+  M400
+  M211 X0 Y0 Z0 ;turn off soft endstop
+  M975 S1 ; turn on input shaping
+  
+  G29.2 S0 ; avoid invalid abl data
+  G150.3
+
+M620.10 A0 F523.843 H0.4 T240 P220 S1
+M620.10 A1 F523.843 H0.4 T240 P220 S1
+
+  
+ M620.11 P0 L0 I0 E0
+ M620.11 K0 I0 R0
+  
+  M620 S0A   ; switch material if AMS exist
+  M1002 gcode_claim_action : 4
+  M1002 set_filament_type:UNKNOWN
+  M400
+  T0
+  M400
+  M628 S0
+  M629
+  M400
+  M1002 set_filament_type:PLA
+  M621 S0A
+  M104 S${nz}
+  M400
+  M106 P1 S0
+  M400
+  G29.2 S1
+;===== prepare print temperature and material ==========
+
+
+;===== auto extrude cali start =========================
+  M975 S1
+  M1002 judge_flag extrude_cali_flag
+  M622 J0
+    M983.3 F8.75 A0.4 ; cali dynamic extrusion compensation
+  M623
+
+  M622 J1
+    M1002 set_filament_type:PLA
+    M1002 gcode_claim_action : 8
+    M109 S${nz}
+    G90
+    M83
+    M983.3 F8.75 A0.4 ; cali dynamic extrusion compensation
+    M400
+    M106 P1 S255
+    M400 S5
+    M106 P1 S0
+    G150.3
+  M623
+
+  M622 J2
+    M1002 set_filament_type:PLA
+    M1002 gcode_claim_action : 8
+    M109 S${nz}
+    G90
+    M83
+    M983.3 F8.75 A0.4 ; cali dynamic extrusion compensation
+    M400
+    M106 P1 S255
+    M400 S5
+    M106 P1 S0
+    G150.3
+  M623
+;===== auto extrude cali end =========================
+
+  
+  
+  
+    M83
+    G1 E-3 F1800
+    M400 P500
+  
+  G150.2
+  G150.1 F8000
+  G150.2
+  G150.1 F8000
+
+  G91
+  G1 Y-16 F12000 ; move away from the trash bin
+  G90
+  M400
+
+  M104 S140 A
+
+;===== wipe right nozzle start =====
+  M1002 gcode_claim_action : 14
+  G150 T220
+  M400
+  
+
+  M109 S140 A
+
+  G91
+M73 P4 R31
+  G1 Z5 F1200
+  G90
+  M400
+  G150.1
+;===== wipe left nozzle end =====
+
+
+;===== mech mode sweep start =====
+  M1002 gcode_claim_action : 3
+  G90
+M73 P4 R30
+  G1 X128 Y128 F20000
+  G1 Z5 F1200
+  M400 P200
+  M970.3 Q1 A5 K0 O1
+  M970.2 Q1 K1 W74 Z0.01
+  M974 Q1 S2 P0
+  M970.3 Q0 A7 K0 O1
+  M970.2 Q0 K1 W74 Z0.01
+  M974 Q0 S2 P0
+  M975 S1
+  M400
+;===== mech mode sweep end =====
+
+;===== bed leveling ==================================
+  M1002 gcode_claim_action : 54
+  M190 S${bd}; ensure bed temp
+  M109 S140 A
+  M106 S0 ; turn off fan , too noisy
+  M1002 judge_flag g29_before_print_flag
+  M622 J1
+    M1002 gcode_claim_action : 1
+    
+      G29 A1 X68 Y68 I120 J120
+    
+    M400
+    M500 ; save cali data
+  M623
+    
+  M622 J2
+    M1002 gcode_claim_action : 1
+    
+      G29 A2 X68 Y68 I120 J120
+    
+    M400
+    M500 ; save cali data
+  M623
+
+  M622 J0
+    G28
+  M623
+  G29.2 S1
+  G28
+;===== bed leveling end ================================
+
+  M985.1 U0 E2
+  M985.1 U1 E2
+
+  M104 S${nz} A
+  G150.3 ; move to garbage can to wait for temp
+
+;===== wait temperature reaching the reference value =======
+  M190 S${bd} 
+
+  ;========turn off light and fans =============
+  M960 S1 P0 ; turn off laser
+  M960 S2 P0 ; turn off laser
+  M106 S0 ; turn off cooling fan
+  
+;===== wait temperature reaching the reference value =======
+
+  M1002 gcode_claim_action : 255
+  M400
+  M975 S1 ; turn on mech mode supression
+
+;============switch again==================
+  M211 X0 Y0 Z0 ;turn off soft endstop
+  G91
+  G1 Z6 F1200
+  G90
+  M1002 set_filament_type:PLA
+  M620 S0A
+  M400
+  T0
+  M400
+  M628 S0
+  M629
+  M400
+  M621 S0A
+;============switch again==================
+
+;===== for Textured PEI Plate , lower the nozzle as the nozzle was touching topmost of the texture when homing ==
+  
+    
+      G29.1 Z0.01 ; for Textured PEI Plate
+    
+  
+
+  M500
+
+;===== nozzle load line ===============================
+M1002 gcode_claim_action : 51
+  G29.2 S1 ; ensure z comp turn on
+  G90
+  M83
+  M109 S${nz}
+  G0 X100 Y0 F24000
+  M400
+  ;G130 O0 X100 Y-0.4 Z0.8 F4.36536 L40 E20 D5
+  G130 O0 X100 Y-0.2 Z0.6 F4.36536 L40 E12 D4
+  G90
+  M83
+  G1 Z0.5
+  M400
+;===== noozle load line end ===========================
+M1002 gcode_claim_action : 0
+  G29.99
+
+
+M1015.3 S1 H0.4;enable tpu, pla and petg clog detect
+
+
+
+M1015.4 S1 K1 H0.4 ;enable E air printing detect
+
+
+M620.6 I0 W1 ;enable ams air printing detect
+
+M1010 Q0 B0.023 S0.01
+M1010 Q1 B0.005 S0.01
+M1010.1 S1
+
+; ----- Vase Studio: real Bambu P2S start done, spiral body follows -----
+G90
+M83`).split("\n"); },
+    // ↓↓↓ 真實 Bambu Studio P2S 原廠結尾碼(抬 Z 依花瓶高度) ↓↓↓
+    end(P){ const zpark=Math.min(250,Math.round(P.height+40)), zpark2=Math.max(1,zpark-2); return (`; filament end gcode 
+
+;======== P2S end gcode ==========
+;===== 2026/03/13 =====
+M400 ; wait for buffer to clear
+G92 E0 ; zero the extruder
+
+; pull back filament to AMS
+M620 S65535
+T65535
+G150.2
+M621 S65535
+
+G150.3
+
+M400 ; wait all motion done
+
+M1002 judge_flag timelapse_record_flag
+M622 J1
+    M991 S0 P-1 ;end smooth timelapse at safe pos
+    M400 S5 ;wait for last picture to be taken
+M623  ;end of "timelapse_record_flag"
+
+M104 S0 ; turn off hotend
+M140 S0 ; turn off bed
+M106 S0 ; turn off fan
+M106 P2 S0 ; turn off remote part cooling fan
+M106 P3 S0 ; turn off chamber cooling fan
+M106 P10 S0 ; turn off left aux fan
+
+M400 ; wait all motion done
+M17 S
+M17 Z0.4 ; lower z motor current to reduce impact if there is something in the bottom
+
+    
+        G1 Z${zpark} F600
+        G1 Z${zpark2}
+    
+
+M400 P100
+M17 R ; restore z current
+
+
+M220 S100  ; Reset feedrate magnitude
+M201.2 K1.0 ; Reset acc magnitude
+M73.2 R1.0 ;Reset left time magnitude
+M1002 set_gcode_claim_speed_level : 0
+
+M1015.3 S0 ;disable clog detect
+M1015.4 S0 K0 ;disable air printing detect
+
+;=====printer finish air purification=========
+M622.1 S0
+M1002 judge_flag print_finish_air_filt_flag
+
+M622 J1
+M1002 gcode_claim_action : 66
+M145 P1
+M106 P2 S255
+M400 S180
+M106 P2 S0
+M623
+
+M622 J2
+M1002 gcode_claim_action : 66
+M145 P0
+M106 P3 S255
+M400 S180
+M106 P3 S0
+M623
+;=====printer finish air purification=========
+
+;=====printer finish  sound=========
+M17
+M400 S1
+M1006 S1
+M1006 A53 B10 L50 C53 D10 M50 E53 F10 N50 
+M1006 A57 B10 L50 C57 D10 M50 E57 F10 N50 
+M1006 A0 B15 L0 C0 D15 M0 E0 F15 N0 
+M1006 A53 B10 L50 C53 D10 M50 E53 F10 N50 
+M1006 A57 B10 L50 C57 D10 M50 E57 F10 N50 
+M1006 A0 B15 L0 C0 D15 M0 E0 F15 N0 
+M1006 A48 B10 L50 C48 D10 M50 E48 F10 N50 
+M1006 A0 B15 L0 C0 D15 M0 E0 F15 N0 
+M1006 A60 B10 L50 C60 D10 M50 E60 F10 N50 
+M1006 W
+;=====printer finish  sound=========
+M400
+M18
+M73 P100 R0`).split("\n"); }
   }
 };
 
@@ -471,13 +881,12 @@ function buildGcode(){
   if(P.retract>0)g.push(`G1 E-${P.retract.toFixed(2)} F${P.retractF} ; retract before travel (anti-stringing)`);
   g.push(`G0 F18000 X${s[0].toFixed(3)} Y${s[1].toFixed(3)} Z${s[2].toFixed(3)}`);
   g.push(`G1 E${(P.retract+0.2).toFixed(2)} F1800 ; unretract + prime`,`G1 F${feed1}`);
-  let totalE=0,fanDone=false,speedUp=false,acc=0,emit=0;
-  const fanZ=P.firstZ+P.layerHeight*0.5;   // 第 2 層開始吹(給第一層黏著,之後全力散熱)
-  const spdZ=P.firstZ+P.layerHeight;        // 第一層完成後才升到列印全速
+  // ★ 全程定速(= 成功檔的 firstSpeed 18mm/s)。慢速才能層層融合;之前升到全速導致
+  //   往上出料變少、黏不住下層。風扇沿用成功檔:第 3 層(z>0.6)才開,不提早、不加輔助。
+  let totalE=0,fanDone=false,acc=0,emit=0;
   for(let i=1;i<pts.length;i++){const a=pts[i-1],b=pts[i],d=Math.hypot(b[0]-a[0],b[1]-a[1],b[2]-a[2]);
     const e=d*P.lineWidth*P.layerHeight/filA*(P.flow/100);totalE+=e;
-    if(!fanDone&&b[2]>fanZ){M.fanOnLines(P,material).forEach(l=>g.push(l));fanDone=true;}
-    if(!speedUp&&b[2]>spdZ){g.push(`G1 F${feed} ; ramp to full print speed after first layer`);speedUp=true;}
+    if(!fanDone&&b[2]>0.6){M.fanOnLines(P,material).forEach(l=>g.push(l));fanDone=true;}
     g.push(`G1 X${b[0].toFixed(3)} Y${b[1].toFixed(3)} Z${b[2].toFixed(3)} E${e.toFixed(5)}`);
     acc+=d/P.speed;if(acc-emit>=30){const pr=Math.min(99,Math.round((startupSec+acc)/totalSec*100));const rem=Math.max(0,Math.round((totalSec-startupSec-acc)/60));g.push(`M73 P${pr} R${rem}`);emit=acc;}}
   // ---- 收尾前抽回,避免抬 Z 時滴料拉絲 ----
