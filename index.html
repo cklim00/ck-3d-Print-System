@@ -87,13 +87,6 @@
       <button data-machine="P2S">Bambu P2S</button>
     </div>
     <div class="machinenote" id="machinenote"></div>
-    <div class="machineseg" id="amsseg" style="display:none;margin-top:8px">
-      <span class="mlabel">AMS 料槽</span>
-      <button data-ams="0">第1槽</button>
-      <button data-ams="1">第2槽</button>
-      <button data-ams="2">第3槽</button>
-      <button data-ams="3">第4槽</button>
-    </div>
     <div class="modeseg" id="modeseg">
       <button data-mode="param" class="on">參數花瓶</button>
       <button data-mode="obj">上傳 OBJ</button>
@@ -278,7 +271,7 @@ const MACHINE={
     note:"使用你 demo 檔實際印成功的完整原廠起始碼(原封不動,只換溫度)。這套會:進料到噴頭 → 校準 → 壓力提前 → 印。⚠ P2S 韌體強制校準+進料,無法像 A1 跳過,每次約 4–6 分。請用「跟做 demo 時相同的耗材位置」(同一 AMS 槽/外接)。第一次留在電源開關旁。",
     fanOnLines:(P,mat)=>["M106 P1 S"+Math.round(P.fan*255/100)+" ; part cooling fan (P1)"],
     fanOff:"M106 P1 S0 ; first-layer part fan OFF",
-    start(P){ const nz=P.nozzle, bd=P.bed, sl=(P.amsSlot||0); return (`M201 X20000 Y20000 Z500 E5000
+    start(P){ const nz=P.nozzle, bd=P.bed; return (`M201 X20000 Y20000 Z500 E5000
 M203 X600 Y600 Z20 E30
 M204 P20000 R5000 T20000
 M205 X9.00 Y9.00 Z3.00 E2.50
@@ -402,17 +395,17 @@ M620.10 A1 F523.843 H0.4 T240 P220 S1
  M620.11 P0 L0 I0 E0
  M620.11 K0 I0 R0
   
-  M620 S${sl}A   ; switch material if AMS exist
+  M620 S0A   ; switch material if AMS exist
   M1002 gcode_claim_action : 4
   M1002 set_filament_type:UNKNOWN
   M400
-  T${sl}
+  T0
   M400
   M628 S0
   M629
   M400
   M1002 set_filament_type:PLA
-  M621 S${sl}A
+  M621 S0A
   M104 S${nz}
   M400
   M106 P1 S0
@@ -567,14 +560,14 @@ M73 P4 R30
   G1 Z6 F1200
   G90
   M1002 set_filament_type:PLA
-  M620 S${sl}A
+  M620 S0A
   M400
-  T${sl}
+  T0
   M400
   M628 S0
   M629
   M400
-  M621 S${sl}A
+  M621 S0A
 ;============switch again==================
 
 ;===== for Textured PEI Plate , lower the nozzle as the nozzle was touching topmost of the texture when homing ==
@@ -1068,18 +1061,9 @@ function setMachine(name){
     cb.disabled=false;
     if(hint)hint.textContent='預設關閉——用機器上次存的調平資料,省約 2–3 分鐘。床不平或常搬機器再開啟。';
   }
-  // AMS 料槽選擇器:只在 P2S 顯示
-  const amsseg=document.getElementById('amsseg');
-  amsseg.style.display = machine==='P2S' ? 'flex' : 'none';
-  amsseg.querySelectorAll('button').forEach(b=>b.classList.toggle('on',+b.dataset.ams===(P.amsSlot||0)));
   refresh();
 }
 document.querySelectorAll('#machineseg button').forEach(b=>b.addEventListener('click',()=>setMachine(b.dataset.machine)));
-document.querySelectorAll('#amsseg button').forEach(b=>b.addEventListener('click',()=>{
-  P.amsSlot=+b.dataset.ams;
-  document.querySelectorAll('#amsseg button').forEach(x=>x.classList.toggle('on',x===b));
-  toast('AMS 改用第'+(P.amsSlot+1)+'槽');
-}));
 
 /* 上傳 */
 const drop=document.getElementById('drop'),fileIn=document.getElementById('file');
