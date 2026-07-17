@@ -402,7 +402,7 @@ M620.10 A1 F523.843 H0.4 T240 P220 S1
  M620.11 P0 L0 I0 E0
  M620.11 K0 I0 R0
   
-  M620 S0A   ; switch material if AMS exist
+; M620 S0A  AMS load OFF (用當下載入的料,不查 AMS 料槽)
   M1002 gcode_claim_action : 4
   M1002 set_filament_type:UNKNOWN
   M400
@@ -412,7 +412,7 @@ M620.10 A1 F523.843 H0.4 T240 P220 S1
   M629
   M400
   M1002 set_filament_type:PLA
-  M621 S0A
+; M621 S0A  AMS load OFF
   M104 S${nz}
   M400
   M106 P1 S0
@@ -567,14 +567,14 @@ M73 P4 R30
   G1 Z6 F1200
   G90
   M1002 set_filament_type:PLA
-  M620 S0A
+; M620 S0A  AMS load OFF
   M400
   T0
   M400
   M628 S0
   M629
   M400
-  M621 S0A
+; M621 S0A  AMS load OFF
 ;============switch again==================
 
 ;===== for Textured PEI Plate , lower the nozzle as the nozzle was touching topmost of the texture when homing ==
@@ -605,18 +605,18 @@ M1002 gcode_claim_action : 0
   G29.99
 
 
-M1015.3 S1 H0.4;enable tpu, pla and petg clog detect
+M1015.3 S0 H0.4 ; clog detect OFF (custom gcode 誤報沒料)
 
 
 
-M1015.4 S1 K1 H0.4 ;enable E air printing detect
+M1015.4 S0 K0 H0.4 ; air-print/runout detect OFF
 
 
-M620.6 I0 W1 ;enable ams air printing detect
+; M620.6 I0 W1 ; AMS air-print detect OFF
 
-M1010 Q0 B0.023 S0.01
-M1010 Q1 B0.005 S0.01
-M1010.1 S1
+; M1010 Q0 B0.023 S0.01 ; clog sensor OFF
+; M1010 Q1 B0.005 S0.01 ; clog sensor OFF
+; M1010.1 S1 ; clog sensor OFF
 
 ; ----- Vase Studio: real Bambu P2S start done, spiral body follows -----
 G90
@@ -630,10 +630,10 @@ M400 ; wait for buffer to clear
 G92 E0 ; zero the extruder
 
 ; pull back filament to AMS
-M620 S65535
-T65535
+; M620 S65535  AMS unload OFF
+; T65535
 G150.2
-M621 S65535
+; M621 S65535  AMS unload OFF
 
 G150.3
 
