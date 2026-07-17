@@ -1,7 +1,7 @@
 <!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>螺旋花瓶產生器 · A1</title>
+<title>螺旋花瓶產生器 · A1 / P2S</title>
 <style>
   :root{
     --bg:#17130d;--panel:#211b12;--panel2:#2a2216;--line:#3a3020;
@@ -21,6 +21,11 @@
   .modeseg{display:flex;gap:8px;margin:14px 0 0}
   .modeseg button{font-family:var(--mono);font-size:13px;letter-spacing:.04em;color:var(--muted);background:var(--panel2);border:1px solid var(--line);border-radius:9px;padding:9px 16px;cursor:pointer}
   .modeseg button.on{color:#1a140b;background:var(--accent);border-color:var(--accent);font-weight:700}
+  .machineseg{display:flex;gap:8px;margin:12px 0 0;align-items:center;flex-wrap:wrap}
+  .machineseg .mlabel{font-family:var(--mono);font-size:10px;letter-spacing:.28em;text-transform:uppercase;color:var(--muted);margin-right:2px}
+  .machineseg button{font-family:var(--mono);font-size:13px;letter-spacing:.04em;color:var(--muted);background:var(--panel2);border:1px solid var(--line);border-radius:9px;padding:8px 18px;cursor:pointer;font-weight:700}
+  .machineseg button.on{color:#0c1614;background:var(--cool);border-color:var(--cool)}
+  .machinenote{font-size:12px;color:var(--cool);margin:8px 2px 0;border-left:2px solid var(--cool);padding-left:11px;line-height:1.6;max-width:64ch}
   .grid{display:grid;grid-template-columns:1fr 1fr;gap:22px;align-items:start;margin-top:18px}
   @media(max-width:860px){.grid{grid-template-columns:1fr}}
   .panel{background:linear-gradient(180deg,var(--panel),#1c1610);border:1px solid var(--line);border-radius:14px;padding:18px}
@@ -73,9 +78,15 @@
 
 <div class="wrap">
   <header>
-    <div class="eyebrow">Bambu Lab A1 · Spiral Vase G-code</div>
+    <div class="eyebrow">Bambu Lab A1 / P2S · Spiral Vase G-code</div>
     <h1>螺旋花瓶產生器 <span class="dim">/ 直接開印</span></h1>
-    <p class="sub">用參數設計花瓶,或上傳 OBJ 模型自動轉成單壁螺旋花瓶。產生的 .gcode 已內建 A1 設定、省略耗時校正(歸零→加熱→邊緣清料→直接開印),並寫入正確列印時間。</p>
+    <p class="sub">用參數設計花瓶,或上傳 OBJ 模型自動轉成單壁螺旋花瓶。產生的 .gcode 會依「所選機型」寫入正確的開頭/結尾流程,省略耗時校正(歸零→加熱→邊緣清料→直接開印),並寫入正確列印時間。</p>
+    <div class="machineseg" id="machineseg">
+      <span class="mlabel">機型</span>
+      <button data-machine="A1" class="on">Bambu A1</button>
+      <button data-machine="P2S">Bambu P2S</button>
+    </div>
+    <div class="machinenote" id="machinenote"></div>
     <div class="modeseg" id="modeseg">
       <button data-mode="param" class="on">參數花瓶</button>
       <button data-mode="obj">上傳 OBJ</button>
@@ -195,7 +206,7 @@
       <div class="actions" id="actions"><button class="btn primary" id="dl">產生並下載 .gcode</button><button class="btn ghost" id="cp">複製</button></div>
       <div class="timewarn" id="timewarn" style="display:none"></div>
       <details id="gcpreview"><summary>展開 G-code 預覽</summary><pre id="preview">按「產生並下載」後會在此顯示前段內容。</pre></details>
-      <p class="note">存到 microSD → 插入 A1 → 螢幕本機檔案選取直接印。第三方 gcode 無法用雲端送印。外徑超過約 250mm 會顯示紅字,請降低高度。</p>
+      <p class="note" id="printnote">存到 microSD → 插入機器 → 螢幕本機檔案選取直接印。第三方 gcode 無法用雲端送印。外徑超過約 250mm 會顯示紅字,請降低高度。</p>
     </div>
   </div>
 </div>
@@ -209,6 +220,81 @@ const P={baseR:17,topR:10,height:40,lobes:6,lobeDepth:2.5,twist:180,
   filamentD:1.75,density:1.24};
 const MAT={PLA:{nozzle:220,bed:60,density:1.24},PETG:{nozzle:240,bed:70,density:1.27},TPU:{nozzle:230,bed:40,density:1.21}};
 let material="PLA", mode="param", ENV=null, RAW=null, upAxis="Y", GRAW=null, GENV=null, GINFO=null;
+let machine="A1";   // "A1" | "P2S"
+
+/* ============================================================
+   機型設定檔（A1 = 床身移動 i3 / P2S = 封閉 CoreXY）
+   兩機 build volume 皆 256×256×256,座標與置中共用;
+   差別在「開頭流程 / 結尾流程 / 風扇指令 / 校正耗時」。
+   ============================================================ */
+const MACHINE={
+  A1:{
+    label:"Bambu A1",
+    bedX:256, bedY:256, bedZ:256,
+    startupNoMesh:75, startupMesh:210,   // 秒:略過/含床面調平
+    maxMin:12,
+    presentBed:true,                     // A1 可把床往前送出
+    note:"床身移動結構,load-cell 壓床歸零。沿用你原本已驗證的開頭流程。",
+    // 風扇:A1 用不帶編號的 M106
+    fanOn:(pct)=>"M106 S"+Math.round(pct*255/100)+" ; part fan on",
+    fanOff:"M107 ; first-layer fan OFF",
+    fanEnd:"M106 S0 ; fan off",
+    // 開頭流程(回傳字串陣列)
+    start(P){
+      const g=[];
+      g.push("; ===== Bambu Lab A1 — FAST START (calibration skipped) =====");
+      g.push("M17 X0.65 Y1.2 Z0.6 ; A1 default motor current");
+      g.push("M104 S150 ; preheat (avoid ooze while homing)");
+      g.push("M140 S"+P.bed,"M190 S"+P.bed+" ; wait bed","M109 S150 ; wait preheat");
+      g.push("G28 ; home all (A1 load-cell Z homing = bed surface)");
+      if(P.bedMesh)g.push("G29 ; bed mesh");
+      g.push("M104 S"+P.nozzle,"M109 S"+P.nozzle+" ; wait nozzle to print temp");
+      return g;
+    },
+    // 結尾流程
+    end(P){
+      const g=[];
+      g.push("; ===== A1 END =====","M73 P100 R0","G91","G1 Z10 F900","G90");
+      g.push("M104 S0 ; nozzle off","M140 S0 ; bed off","M106 S0 ; fan off",
+             "G1 X10 Y250 F12000 ; present bed","M84 ; motors off","; done");
+      return g;
+    }
+  },
+  P2S:{
+    label:"Bambu P2S",
+    bedX:256, bedY:256, bedZ:256,
+    startupNoMesh:100, startupMesh:180,  // P2S 強制歸零/擦嘴,啟動略久
+    maxMin:14,
+    presentBed:false,                    // CoreXY 床不外送,改抬 Z 停角落
+    note:"封閉 CoreXY。⚠ 絕不能用 A1 的 per-axis 馬達電流。已改為:預設電流→先熱床→噴頭軟化 140°C→G28(內建擦嘴+load-cell 壓床)→升列印溫。第一次列印請留在電源開關旁觀察第一層。",
+    // 風扇:P2S 零件風扇 = P1(封閉機還有 P2 輔助 / P3 機箱,此處只控零件風扇)
+    fanOn:(pct)=>"M106 P1 S"+Math.round(pct*255/100)+" ; part cooling fan (P1) on",
+    fanOff:"M106 P1 S0 ; first-layer part fan OFF",
+    fanEnd:"M106 P1 S0 ; part fan off",
+    start(P){
+      const g=[];
+      g.push("; ===== Bambu Lab P2S — FAST START (heavy calibration skipped) =====");
+      g.push("M17 ; enable steppers at DEFAULT current (CoreXY — NEVER set A1 per-axis current)");
+      g.push("M140 S"+P.bed+" ; heat bed first (Bambu order)");
+      g.push("M104 S140 ; soft-preheat nozzle (hot enough to home, not oozing)");
+      g.push("M109 S140 ; wait nozzle 140");
+      g.push("G28 ; home all — firmware wipes nozzle + load-cell Z on bed surface");
+      if(P.bedMesh)g.push("G29 ; auto bed mesh (skip = use last saved mesh)");
+      g.push("M190 S"+P.bed+" ; ensure bed at target");
+      g.push("M104 S"+P.nozzle,"M109 S"+P.nozzle+" ; heat nozzle to print temp");
+      return g;
+    },
+    end(P){
+      const g=[];
+      g.push("; ===== P2S END =====","M73 P100 R0");
+      g.push("M104 S0 ; nozzle off","M140 S0 ; bed off","M106 P1 S0 ; part fan off");
+      g.push("G91","G1 Z20 F900 ; lift","G90");
+      g.push("G1 X128 Y250 F12000 ; park toolhead to back (enclosed — bed stays put)");
+      g.push("M84 ; motors off","; done");
+      return g;
+    }
+  }
+};
 
 /* ---------- OBJ -> 繞軸外緣 envelope ---------- */
 function parseOBJ(text){
@@ -357,22 +443,19 @@ function spiralPoints(maxPts){
   pts._revs=revs;return pts;
 }
 function buildGcode(){
+  const M=MACHINE[machine];
   const filA=Math.PI*Math.pow(P.filamentD/2,2), pts=spiralPoints(null);
   let len=0;for(let i=1;i<pts.length;i++){const a=pts[i-1],b=pts[i];len+=Math.hypot(b[0]-a[0],b[1]-a[1],b[2]-a[2]);}
-  const startupSec=P.bedMesh?210:75, totalSec=len/P.speed+startupSec, totalMin=Math.max(1,Math.round(totalSec/60));
+  const startupSec=P.bedMesh?M.startupMesh:M.startupNoMesh, totalSec=len/P.speed+startupSec, totalMin=Math.max(1,Math.round(totalSec/60));
   const feed=Math.round(P.speed*60),feed1=Math.round(P.firstSpeed*60);
   const g=[];
-  g.push("; ===== Bambu Lab A1 — FAST START (calibration skipped) =====");
-  g.push("; spiral vase, single-wall | "+(mode==='obj'?'from OBJ':'parametric')+" | Vase Studio");
-  g.push("; VASE_PARAMS: "+JSON.stringify({mode:mode,material:material,baseR:P.baseR,topR:P.topR,height:P.height,lobes:P.lobes,lobeDepth:P.lobeDepth,twist:P.twist,waveAmp:P.waveAmp,waveCount:P.waveCount,profile:P.profile,profileAmt:P.profileAmt,tex:P.tex,texAmp:P.texAmp,layerHeight:P.layerHeight,lineWidth:P.lineWidth,nozzle:P.nozzle,bed:P.bed,speed:P.speed}));
+  g.push("; spiral vase, single-wall | "+(mode==='obj'?'from OBJ':'parametric')+" | "+M.label+" | Vase Studio");
+  g.push("; VASE_PARAMS: "+JSON.stringify({machine:machine,mode:mode,material:material,baseR:P.baseR,topR:P.topR,height:P.height,lobes:P.lobes,lobeDepth:P.lobeDepth,twist:P.twist,waveAmp:P.waveAmp,waveCount:P.waveCount,profile:P.profile,profileAmt:P.profileAmt,tex:P.tex,texAmp:P.texAmp,layerHeight:P.layerHeight,lineWidth:P.lineWidth,nozzle:P.nozzle,bed:P.bed,speed:P.speed}));
   g.push("M73 P0 R"+totalMin,"G90","G21","M83");
-  g.push("M17 X0.65 Y1.2 Z0.6 ; A1 default motor current");
-  g.push("M104 S150 ; preheat (avoid ooze while homing)");
-  g.push("M140 S"+P.bed,"M190 S"+P.bed+" ; wait bed","M109 S150 ; wait preheat");
-  g.push("G28 ; home all (A1 load-cell Z homing = bed surface)");
-  if(P.bedMesh)g.push("G29 ; bed mesh");
-  g.push("M104 S"+P.nozzle,"M109 S"+P.nozzle+" ; wait nozzle to print temp");
-  g.push("; ----- purge line on front edge -----","M107 ; first-layer fan OFF","G1 Z0.3 F900","G1 X20 Y6 F18000","G1 Z0.3 F900");
+  // ---- 機型專屬開頭 ----
+  M.start(P).forEach(l=>g.push(l));
+  // ---- 邊緣清料(兩機共用,座標落在 256×256 床內)----
+  g.push("; ----- purge line on front edge -----",M.fanOff,"G1 Z0.3 F900","G1 X20 Y6 F18000","G1 Z0.3 F900");
   g.push("G1 X160 Y6 E18 F1200 ; purge 1","G1 X160 Y6.6 F1200","G1 X30 Y6.6 E14 F1200 ; purge 2","G1 Z1 F900");
   g.push("; ----- begin -----");
   const s=pts[0];g.push(`G0 F18000 X${s[0].toFixed(3)} Y${s[1].toFixed(3)} Z${s[2].toFixed(3)}`);
@@ -380,11 +463,11 @@ function buildGcode(){
   let totalE=0,fanDone=false,acc=0,emit=0;
   for(let i=1;i<pts.length;i++){const a=pts[i-1],b=pts[i],d=Math.hypot(b[0]-a[0],b[1]-a[1],b[2]-a[2]);
     const e=d*P.lineWidth*P.layerHeight/filA*(P.flow/100);totalE+=e;
-    if(!fanDone&&b[2]>0.6){g.push("M106 S"+Math.round(P.fan*255/100)+" ; fan on");fanDone=true;}
+    if(!fanDone&&b[2]>0.6){g.push(M.fanOn(P.fan));fanDone=true;}
     g.push(`G1 X${b[0].toFixed(3)} Y${b[1].toFixed(3)} Z${b[2].toFixed(3)} E${e.toFixed(5)}`);
     acc+=d/P.speed;if(acc-emit>=30){const pr=Math.min(99,Math.round((startupSec+acc)/totalSec*100));const rem=Math.max(0,Math.round((totalSec-startupSec-acc)/60));g.push(`M73 P${pr} R${rem}`);emit=acc;}}
-  g.push("; ===== A1 END =====","M73 P100 R0","G91","G1 Z10 F900","G90");
-  g.push("M104 S0 ; nozzle off","M140 S0 ; bed off","M106 S0 ; fan off","G1 X10 Y250 F12000 ; present bed","M84 ; motors off","; done");
+  // ---- 機型專屬結尾 ----
+  M.end(P).forEach(l=>g.push(l));
   const grams=totalE*filA/1000*P.density;
   return {gcode:g.join("\n"),totalMin,filMM:totalE,grams,layers:Math.round(pts._revs)};
 }
@@ -404,7 +487,7 @@ function updateStats(){
   const filA=Math.PI*Math.pow(P.filamentD/2,2), pts=spiralPoints(null);
   let len=0;for(let i=1;i<pts.length;i++){const a=pts[i-1],b=pts[i];len+=Math.hypot(b[0]-a[0],b[1]-a[1],b[2]-a[2]);}
   const totalE=len*P.lineWidth*P.layerHeight/filA*(P.flow/100), grams=totalE*filA/1000*P.density;
-  const min=Math.max(1,Math.round((len/P.speed+(P.bedMesh?210:75))/60));
+  const _M=MACHINE[machine];const min=Math.max(1,Math.round((len/P.speed+(P.bedMesh?_M.startupMesh:_M.startupNoMesh))/60));
   const pmul = P.profile==='barrel'?1+P.profileAmt:1;
   const tex = P.tex==='none'?0:P.texAmp;
   const dia = mode==='obj'&&ENV ? 2*(ENV.maxR*objScale()*pmul+P.lobeDepth+P.waveAmp+tex) : 2*(Math.max(P.baseR,P.topR)*pmul+P.lobeDepth+P.waveAmp+tex);
@@ -425,7 +508,7 @@ function updateStats(){
 /* ---------- 預覽 ---------- */
 const cv=document.getElementById('stage'),ctx=cv.getContext('2d');
 let yaw=-0.6,spin=true,dragging=false,lastX=0,shadeMode=true;
-const MAX_MIN=12; let overTime=false;   // 列印時間上限(分鐘)
+let MAX_MIN=MACHINE[machine].maxMin, overTime=false;   // 列印時間上限(分鐘,依機型)
 const COOL=[111,208,192],WARM=[255,125,26];
 function lc(a,b,t){return a.map((v,i)=>Math.round(v+(b[i]-v)*t));}
 function sub(a,b){return [a[0]-b[0],a[1]-b[1],a[2]-b[2]];}
@@ -544,6 +627,17 @@ document.querySelectorAll('#modeseg button').forEach(b=>b.addEventListener('clic
   mode=b.dataset.mode;if(mode!=='gcode'){P.height=40;P.firstZ=0.2;}applyModeUI();refresh();}));
 document.querySelectorAll('[data-axis]').forEach(b=>b.addEventListener('click',()=>{upAxis=b.dataset.axis;if(RAW){ENV=buildEnvelope(RAW.V,RAW.F,upAxis);}syncInputs();refresh();}));
 
+/* 機型切換 */
+function setMachine(name){
+  machine=name; const M=MACHINE[machine];
+  MAX_MIN=M.maxMin;
+  document.querySelectorAll('#machineseg button').forEach(b=>b.classList.toggle('on',b.dataset.machine===machine));
+  document.getElementById('machinenote').textContent=M.note;
+  document.getElementById('printnote').textContent='存到 microSD → 插入 '+M.label+' → 螢幕本機檔案選取直接印。第三方 gcode 無法用雲端送印。外徑超過約 250mm 會顯示紅字,請降低高度。';
+  refresh();
+}
+document.querySelectorAll('#machineseg button').forEach(b=>b.addEventListener('click',()=>setMachine(b.dataset.machine)));
+
 /* 上傳 */
 const drop=document.getElementById('drop'),fileIn=document.getElementById('file');
 drop.addEventListener('click',()=>fileIn.click());
@@ -634,9 +728,9 @@ function generate(){const r=buildGcode();lastG=r.gcode;document.getElementById('
 document.getElementById('dl').addEventListener('click',()=>{const r=generate();
   if(mode!=='gcode' && r.totalMin>MAX_MIN){toast('預估 '+r.totalMin+' 分,超過 '+MAX_MIN+' 分上限,請先調整參數');return;}
   const blob=new Blob([r.gcode],{type:'text/plain'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);
-  const base = mode==='obj'?'vase_obj':'vase';a.download=`${base}_${P.height}mm_A1.gcode`;a.click();URL.revokeObjectURL(a.href);toast(`已下載 · 約 ${r.totalMin} 分 · ${r.grams.toFixed(1)} g`);});
+  const base = mode==='obj'?'vase_obj':'vase';a.download=`${base}_${P.height}mm_${machine}.gcode`;a.click();URL.revokeObjectURL(a.href);toast(`已下載 · ${machine} · 約 ${r.totalMin} 分 · ${r.grams.toFixed(1)} g`);});
 document.getElementById('cp').addEventListener('click',async()=>{if(!lastG)generate();try{await navigator.clipboard.writeText(lastG);toast('已複製 G-code');}catch{toast('複製失敗,請用下載');}});
 
 window.addEventListener('resize',draw);
-applyModeUI();syncInputs();refresh();loop();
+applyModeUI();syncInputs();setMachine('A1');refresh();loop();
 </script>
