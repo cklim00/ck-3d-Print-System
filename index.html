@@ -263,10 +263,11 @@ const MACHINE={
   P2S:{
     label:"Bambu P2S",
     bedX:256, bedY:256, bedZ:256,
-    startupNoMesh:100, startupMesh:180,  // P2S 強制歸零/擦嘴,啟動略久
+    startupNoMesh:175, startupMesh:190,  // P2S 一律做 G29 調平,啟動較久
     maxMin:14,
     presentBed:false,                    // CoreXY 床不外送,改抬 Z 停角落
-    note:"封閉 CoreXY。⚠ 絕不能用 A1 的 per-axis 馬達電流。已改為:預設電流→先熱床→噴頭軟化 140°C→G28(內建擦嘴+load-cell 壓床)→升列印溫。第一次列印請留在電源開關旁觀察第一層。",
+    alwaysLevel:true,                    // P2S 準確 Z 靠 G29,強制執行
+    note:"封閉 CoreXY。⚠ 兩大重點:(1) 絕不能用 A1 的 per-axis 馬達電流;(2) P2S 的 G28 Z 只是低精度粗歸零,準確的第一層 Z=0 必須靠 G29 觸床建立——所以 P2S 一律強制執行 G29(這就是之前「騰空」的原因)。第一次列印請留在電源開關旁觀察第一層。",
     // 風扇:P2S 零件風扇 = P1(封閉機還有 P2 輔助 / P3 機箱,此處只控零件風扇)
     fanOn:(pct)=>"M106 P1 S"+Math.round(pct*255/100)+" ; part cooling fan (P1) on",
     fanOff:"M106 P1 S0 ; first-layer part fan OFF",
@@ -278,8 +279,9 @@ const MACHINE={
       g.push("M140 S"+P.bed+" ; heat bed first (Bambu order)");
       g.push("M104 S140 ; soft-preheat nozzle (hot enough to home, not oozing)");
       g.push("M109 S140 ; wait nozzle 140");
-      g.push("G28 ; home all — firmware wipes nozzle + load-cell Z on bed surface");
-      if(P.bedMesh)g.push("G29 ; auto bed mesh (skip = use last saved mesh)");
+      g.push("G28 ; home all axes (Z here is LOW-precision rough home only)");
+      g.push("G29 ; REQUIRED on P2S — bed leveling touches off the load cell to set the");
+      g.push(";     accurate first-layer Z=0. Skipping it leaves Z rough/high → prints in air.");
       g.push("M190 S"+P.bed+" ; ensure bed at target");
       g.push("M104 S"+P.nozzle,"M109 S"+P.nozzle+" ; heat nozzle to print temp");
       return g;
@@ -634,6 +636,16 @@ function setMachine(name){
   document.querySelectorAll('#machineseg button').forEach(b=>b.classList.toggle('on',b.dataset.machine===machine));
   document.getElementById('machinenote').textContent=M.note;
   document.getElementById('printnote').textContent='存到 microSD → 插入 '+M.label+' → 螢幕本機檔案選取直接印。第三方 gcode 無法用雲端送印。外徑超過約 250mm 會顯示紅字,請降低高度。';
+  // P2S 準確 Z 靠 G29 → 強制調平,鎖住勾選框;A1 維持可選
+  const cb=document.querySelector('[data-k="bedMesh"]');
+  const hint=cb.closest('.check').querySelector('.hint');
+  if(M.alwaysLevel){
+    P.bedMesh=true; cb.checked=true; cb.disabled=true;
+    if(hint)hint.textContent='P2S 一律做 G29——這是準確第一層 Z 的來源,不可省略(省了會騰空)。';
+  }else{
+    cb.disabled=false;
+    if(hint)hint.textContent='預設關閉——用機器上次存的調平資料,省約 2–3 分鐘。床不平或常搬機器再開啟。';
+  }
   refresh();
 }
 document.querySelectorAll('#machineseg button').forEach(b=>b.addEventListener('click',()=>setMachine(b.dataset.machine)));
