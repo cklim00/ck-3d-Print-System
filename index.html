@@ -181,6 +181,7 @@
         <div class="ctrl"><label>列印速度</label><span class="unit">mm/s</span><input type="range" data-k="speed" min="10" max="120" step="1"><input class="num" data-n="speed"></div>
         <div class="ctrl"><label>第一層速度</label><span class="unit">mm/s</span><input type="range" data-k="firstSpeed" min="8" max="40" step="1"><input class="num" data-n="firstSpeed"></div>
         <div class="ctrl"><label>風扇（第一層後）</label><span class="unit">%</span><input type="range" data-k="fan" min="0" max="100" step="5"><input class="num" data-n="fan"></div>
+        <div class="ctrl"><label>回抽長度（抗牽絲）</label><span class="unit">mm</span><input type="range" data-k="retract" min="0" max="2" step="0.1"><input class="num" data-n="retract"></div>
       </div>
 
       <div class="group designctrl">
@@ -217,6 +218,7 @@ const P={baseR:17,topR:10,height:40,lobes:6,lobeDepth:2.5,twist:180,
   waveAmp:1.5,waveCount:12,profile:'straight',profileAmt:0.25,tex:'none',texAmp:1.5,
   layerHeight:0.3,lineWidth:0.6,firstZ:0.2,flow:100,
   nozzle:220,bed:60,speed:40,firstSpeed:18,fan:100,bedMesh:false,
+  retract:0.8,retractF:2100,
   filamentD:1.75,density:1.24};
 const MAT={PLA:{nozzle:220,bed:60,density:1.24},PETG:{nozzle:240,bed:70,density:1.27},TPU:{nozzle:230,bed:40,density:1.21}};
 let material="PLA", mode="param", ENV=null, RAW=null, upAxis="Y", GRAW=null, GENV=null, GINFO=null;
@@ -235,10 +237,9 @@ const MACHINE={
     maxMin:12,
     presentBed:true,                     // A1 可把床往前送出
     note:"床身移動結構,load-cell 壓床歸零。沿用你原本已驗證的開頭流程。",
-    // 風扇:A1 用不帶編號的 M106
-    fanOn:(pct)=>"M106 S"+Math.round(pct*255/100)+" ; part fan on",
+    // 風扇:A1 開放式,只有零件風扇(不帶編號的 M106)
+    fanOnLines:(P,mat)=>["M106 S"+Math.round(P.fan*255/100)+" ; part fan on"],
     fanOff:"M107 ; first-layer fan OFF",
-    fanEnd:"M106 S0 ; fan off",
     // 開頭流程(回傳字串陣列)
     start(P){
       const g=[];
@@ -267,11 +268,17 @@ const MACHINE={
     maxMin:14,
     presentBed:false,                    // CoreXY 床不外送,改抬 Z 停角落
     alwaysLevel:true,                    // P2S 準確 Z 靠 G29,強制執行
-    note:"封閉 CoreXY。⚠ 兩大重點:(1) 絕不能用 A1 的 per-axis 馬達電流;(2) P2S 的 G28 Z 只是低精度粗歸零,準確的第一層 Z=0 必須靠 G29 觸床建立——所以 P2S 一律強制執行 G29(這就是之前「騰空」的原因)。第一次列印請留在電源開關旁觀察第一層。",
-    // 風扇:P2S 零件風扇 = P1(封閉機還有 P2 輔助 / P3 機箱,此處只控零件風扇)
-    fanOn:(pct)=>"M106 P1 S"+Math.round(pct*255/100)+" ; part cooling fan (P1) on",
+    note:"封閉 CoreXY。⚠ 兩大重點:(1) 絕不能用 A1 的 per-axis 馬達電流;(2) P2S 的 G28 Z 只是低精度粗歸零,準確的第一層 Z=0 必須靠 G29 觸床建立——所以 P2S 一律強制執行 G29(這就是之前「騰空」的原因)。印 PLA 已自動加開輔助風扇 P2 對抗機箱熱累積(第四層以上牽絲的解法);建議連同「前門開一條縫」散熱更佳。第一次列印請留在電源開關旁觀察第一層。",
+    // 風扇:P2S 封閉機箱 → 零件風扇 P1 + 輔助風扇 P2(對抗機箱熱累積,PLA 最需要)
+    // P1=零件風扇, P2=輔助側吹風扇, P3=機箱抽風
+    auxByMat:{PLA:80,PETG:30,TPU:0},   // 輔助風扇 %:PLA 全力吹,PETG 少一點,TPU 關
+    fanOnLines(P,mat){
+      const aux=this.auxByMat[mat]??60;
+      const L=["M106 P1 S"+Math.round(P.fan*255/100)+" ; part cooling fan (P1)"];
+      if(aux>0)L.push("M106 P2 S"+Math.round(aux*255/100)+" ; AUX fan (P2) — 對抗封閉機箱熱累積 ("+mat+")");
+      return L;
+    },
     fanOff:"M106 P1 S0 ; first-layer part fan OFF",
-    fanEnd:"M106 P1 S0 ; part fan off",
     start(P){
       const g=[];
       g.push("; ===== Bambu Lab P2S — FAST START (heavy calibration skipped) =====");
@@ -289,7 +296,7 @@ const MACHINE={
     end(P){
       const g=[];
       g.push("; ===== P2S END =====","M73 P100 R0");
-      g.push("M104 S0 ; nozzle off","M140 S0 ; bed off","M106 P1 S0 ; part fan off");
+      g.push("M104 S0 ; nozzle off","M140 S0 ; bed off","M106 P1 S0 ; part fan off","M106 P2 S0 ; aux fan off");
       g.push("G91","G1 Z20 F900 ; lift","G90");
       g.push("G1 X128 Y250 F12000 ; park toolhead to back (enclosed — bed stays put)");
       g.push("M84 ; motors off","; done");
@@ -460,14 +467,21 @@ function buildGcode(){
   g.push("; ----- purge line on front edge -----",M.fanOff,"G1 Z0.3 F900","G1 X20 Y6 F18000","G1 Z0.3 F900");
   g.push("G1 X160 Y6 E18 F1200 ; purge 1","G1 X160 Y6.6 F1200","G1 X30 Y6.6 E14 F1200 ; purge 2","G1 Z1 F900");
   g.push("; ----- begin -----");
-  const s=pts[0];g.push(`G0 F18000 X${s[0].toFixed(3)} Y${s[1].toFixed(3)} Z${s[2].toFixed(3)}`);
-  g.push("G1 E0.6 F1800 ; prime",`G1 F${feed1}`);
-  let totalE=0,fanDone=false,acc=0,emit=0;
+  const s=pts[0];
+  if(P.retract>0)g.push(`G1 E-${P.retract.toFixed(2)} F${P.retractF} ; retract before travel (anti-stringing)`);
+  g.push(`G0 F18000 X${s[0].toFixed(3)} Y${s[1].toFixed(3)} Z${s[2].toFixed(3)}`);
+  g.push(`G1 E${(P.retract+0.2).toFixed(2)} F1800 ; unretract + prime`,`G1 F${feed1}`);
+  let totalE=0,fanDone=false,speedUp=false,acc=0,emit=0;
+  const fanZ=P.firstZ+P.layerHeight*0.5;   // 第 2 層開始吹(給第一層黏著,之後全力散熱)
+  const spdZ=P.firstZ+P.layerHeight;        // 第一層完成後才升到列印全速
   for(let i=1;i<pts.length;i++){const a=pts[i-1],b=pts[i],d=Math.hypot(b[0]-a[0],b[1]-a[1],b[2]-a[2]);
     const e=d*P.lineWidth*P.layerHeight/filA*(P.flow/100);totalE+=e;
-    if(!fanDone&&b[2]>0.6){g.push(M.fanOn(P.fan));fanDone=true;}
+    if(!fanDone&&b[2]>fanZ){M.fanOnLines(P,material).forEach(l=>g.push(l));fanDone=true;}
+    if(!speedUp&&b[2]>spdZ){g.push(`G1 F${feed} ; ramp to full print speed after first layer`);speedUp=true;}
     g.push(`G1 X${b[0].toFixed(3)} Y${b[1].toFixed(3)} Z${b[2].toFixed(3)} E${e.toFixed(5)}`);
     acc+=d/P.speed;if(acc-emit>=30){const pr=Math.min(99,Math.round((startupSec+acc)/totalSec*100));const rem=Math.max(0,Math.round((totalSec-startupSec-acc)/60));g.push(`M73 P${pr} R${rem}`);emit=acc;}}
+  // ---- 收尾前抽回,避免抬 Z 時滴料拉絲 ----
+  if(P.retract>0)g.push(`G1 E-${P.retract.toFixed(2)} F${P.retractF} ; final retract to stop ooze on lift`);
   // ---- 機型專屬結尾 ----
   M.end(P).forEach(l=>g.push(l));
   const grams=totalE*filA/1000*P.density;
