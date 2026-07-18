@@ -173,6 +173,7 @@
 
       <details class="expert" id="expertbox">
         <summary>⚙ 專家設定（尺寸/溫度/速度/開頭流程）— 老師調整用，學生不用動</summary>
+        <button class="btn ghost" id="teacherbtn" style="width:100%;margin:2px 0 12px;font-family:var(--mono);font-size:12px">🔒 老師解鎖模式：輸入密碼解除「高度 + 時間」限制</button>
       <div class="group designctrl">
         <p class="glabel" id="sizelabel">尺寸與品質</p>
         <div class="ctrl"><label id="hlabel">高度 🔒</label><span class="unit">mm</span><input type="range" data-k="height" min="10" max="180" step="1" value="40" disabled><input class="num" data-n="height" value="40" disabled></div>
@@ -240,6 +241,8 @@ const P={baseR:17,topR:10,height:40,lobes:6,lobeDepth:2.5,twist:180,
 const MAT={PLA:{nozzle:220,bed:60,density:1.24},PETG:{nozzle:240,bed:70,density:1.27},TPU:{nozzle:230,bed:40,density:1.21}};
 let material="PLA", mode="param", ENV=null, RAW=null, upAxis="Y", GRAW=null, GENV=null, GINFO=null;
 let machine="A1";   // "A1" | "P2S"
+let TEACHER=false;  // 老師解鎖模式:密碼解除高度+時間限制(懸挑檢查/開口鎖/通道保證仍生效)
+const TEACHER_PW="CKfablab";
 
 /* ============================================================
    機型設定檔（A1 = 床身移動 i3 / P2S = 封閉 CoreXY）
@@ -307,7 +310,7 @@ function parseOBJ(text){
   }
   return {V,F};
 }
-function buildEnvelope(V,F,up,thBins=180,zBins=240){
+function buildEnvelope(V,F,up,thBins=360,zBins=240){ // 角度解析度 360(=1°/格):1–3mm 環向細紋存活率翻倍;螺旋取樣密度自動跟進
   const vi=up==='Z'?2:1, a1=0, a2=up==='Z'?1:2;
   let lo=[1e9,1e9],hi=[-1e9,-1e9],vlo=1e9,vhi=-1e9;
   for(const p of V){lo[0]=Math.min(lo[0],p[a1]);lo[1]=Math.min(lo[1],p[a2]);hi[0]=Math.max(hi[0],p[a1]);hi[1]=Math.max(hi[1],p[a2]);vlo=Math.min(vlo,p[vi]);vhi=Math.max(vhi,p[vi]);}
@@ -567,7 +570,7 @@ function updateStats(){
   s_fil.innerHTML=(totalE/1000).toFixed(1)+'<small> m</small>';s_g.innerHTML=grams.toFixed(1)+'<small> g</small>';
   s_dia.className='v'+(dia>250?' warn':'');
   // 列印時間閘門:超過上限就鎖住下載
-  overTime = min>MAX_MIN;
+  overTime = !TEACHER && min>MAX_MIN;   // 老師模式:時間不設限
   s_time.className = 'v'+(overTime?' warn':' hot');
   const dlBtn=document.getElementById('dl'), tw=document.getElementById('timewarn');
   dlBtn.disabled=overTime;
@@ -664,7 +667,7 @@ function applyModeUI(){
   document.getElementById('expertbox').classList.toggle('hidden',imp);
   document.getElementById('actions').classList.toggle('hidden',imp);
   document.getElementById('gcpreview').classList.toggle('hidden',imp);
-  document.getElementById('hlabel').textContent = mode==='obj'?'目標高度 🔒 (40mm)':'高度 🔒';
+  updateHeightUI();
   document.getElementById('patternhint').textContent = mode==='obj'?'· 疊加在模型外形上':'';
 }
 function syncInputs(){
@@ -675,6 +678,25 @@ function syncInputs(){
   document.querySelectorAll('[data-profile]').forEach(b=>b.classList.toggle('on',b.dataset.profile===P.profile));
   document.querySelectorAll('[data-tex]').forEach(b=>b.classList.toggle('on',b.dataset.tex===P.tex));
 }
+/* ---------- 老師解鎖模式 ---------- */
+function updateHeightUI(){
+  const hs=document.querySelector('input[type=range][data-k="height"]'), hn=document.querySelector('[data-n="height"]');
+  hs.disabled=hn.disabled=!TEACHER;
+  document.getElementById('hlabel').textContent = TEACHER
+    ? (mode==='obj'?'目標高度 🔓 老師模式':'高度 🔓 老師模式')
+    : (mode==='obj'?'目標高度 🔒 (40mm)':'高度 🔒');
+  const tb=document.getElementById('teacherbtn');
+  tb.textContent = TEACHER ? '🔓 老師模式已解鎖（高度可調、時間不限）— 點擊鎖回' : '🔒 老師解鎖模式：輸入密碼解除「高度 + 時間」限制';
+  tb.style.borderColor = TEACHER ? 'var(--accent)' : '';
+  tb.style.color = TEACHER ? 'var(--accent2)' : '';
+}
+document.getElementById('teacherbtn').addEventListener('click',()=>{
+  if(TEACHER){ TEACHER=false; P.height=40; updateHeightUI(); syncInputs(); refresh(); toast('已鎖回學生模式(高度 40mm、時間上限恢復)'); return; }
+  const pw=prompt('請輸入老師密碼:');
+  if(pw===TEACHER_PW){ TEACHER=true; updateHeightUI(); refresh(); toast('老師模式已解鎖 🔓 高度可調、時間不限;懸挑檢查仍生效'); }
+  else if(pw!==null){ toast('密碼錯誤'); }
+});
+
 function refresh(){updateStats();updateOhbar();draw();}
 document.querySelectorAll('input[type=range]').forEach(r=>r.addEventListener('input',e=>{const k=e.target.dataset.k;P[k]=parseFloat(e.target.value);const n=document.querySelector(`[data-n="${k}"]`);if(n)n.value=P[k];refresh();}));
 document.querySelectorAll('.num').forEach(n=>n.addEventListener('change',e=>{const k=e.target.dataset.n;let v=parseFloat(e.target.value);if(isNaN(v))return;P[k]=v;const r=document.querySelector(`input[type=range][data-k="${k}"]`);if(r)r.value=v;refresh();}));
@@ -697,7 +719,7 @@ document.querySelectorAll('#matseg button').forEach(b=>b.addEventListener('click
 document.querySelectorAll('#modeseg button').forEach(b=>b.addEventListener('click',()=>{
   if(b.dataset.mode==='obj'&&!ENV){mode='obj';applyModeUI();toast('請上傳一個 .obj 檔');refresh();return;}
   if(b.dataset.mode==='gcode'&&!GRAW){mode='gcode';applyModeUI();updateStats();toast('請匯入一個 .gcode 檔');return;}
-  mode=b.dataset.mode;if(mode!=='gcode'){P.height=40;P.firstZ=0.2;}applyModeUI();refresh();}));
+  mode=b.dataset.mode;if(mode!=='gcode'){if(!TEACHER)P.height=40;P.firstZ=0.2;}applyModeUI();syncInputs();refresh();}));
 document.querySelectorAll('[data-axis]').forEach(b=>b.addEventListener('click',()=>{upAxis=b.dataset.axis;if(RAW){ENV=buildEnvelope(RAW.V,RAW.F,upAxis);}syncInputs();refresh();}));
 
 /* 機型切換 */
@@ -741,7 +763,7 @@ function loadFile(f){
     RAW={V,F};ENV=buildEnvelope(V,F,upAxis);mode='obj';
     GRAW=null;GENV=null;GINFO=null; // 清掉先前匯入的 gcode 狀態
     P.waveAmp=0;P.lobeDepth=0;P.twist=0;P.profile='straight';P.tex='none';P.objWidth=100; // 先呈現模型原貌,圖樣由學生自行疊加
-    P.height=40;P.firstZ=0.2; // 鎖定高度 40mm
+    if(!TEACHER)P.height=40; P.firstZ=0.2; // 鎖定高度 40mm(老師模式除外)
     document.getElementById('chip').style.display='flex';
     document.getElementById('fname').textContent=f.name;
     document.getElementById('fmeta').textContent=V.length+' 點 / '+F.length+' 面';
@@ -813,7 +835,7 @@ function toast(m){const t=document.getElementById('toast');t.textContent=m;t.cla
 let lastG="";
 function generate(){const r=buildGcode();lastG=r.gcode;document.getElementById('preview').textContent=r.gcode.split("\n").slice(0,60).join("\n")+"\n…";return r;}
 document.getElementById('dl').addEventListener('click',()=>{const r=generate();
-  if(mode!=='gcode' && r.totalMin>MAX_MIN){toast('預估 '+r.totalMin+' 分,超過 '+MAX_MIN+' 分上限,請先調整參數');return;}
+  if(mode!=='gcode' && !TEACHER && r.totalMin>MAX_MIN){toast('預估 '+r.totalMin+' 分,超過 '+MAX_MIN+' 分上限,請先調整參數');return;}
   const blob=new Blob([r.gcode],{type:'text/plain'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);
   const base = mode==='obj'?'vase_obj':'vase';a.download=`${base}_${P.height}mm_${machine}.gcode`;a.click();URL.revokeObjectURL(a.href);toast(`已下載 · ${machine} · 約 ${r.totalMin} 分 · ${r.grams.toFixed(1)} g`);});
 document.getElementById('cp').addEventListener('click',async()=>{if(!lastG)generate();try{await navigator.clipboard.writeText(lastG);toast('已複製 G-code');}catch{toast('複製失敗,請用下載');}});
