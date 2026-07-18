@@ -478,18 +478,21 @@ function buildGcode(){
    波浪20×4 = 85°(紅,垂料塌陷)。門檻用 Δr:綠 ≤1.0mm、黃 ≤2.0mm、紅 >2.0mm */
 function computeOverhang(){
   const revs=P.height/P.layerHeight, N=Math.min(300,Math.floor(revs)), TH=72;
-  let maxDr=0, atFrac=0;
+  // 最底 2mm = 「床接住區」:就算張角 90°,料垂 0.2mm 就落在床上黏住,不會失敗。
+  // (OBJ 模型常有圓弧底/外擴底,在這裡數學上必定近 90°,要排除才不會誤報)
+  const bedFrac=Math.min(0.3, 2/P.height);
+  let maxAir=0, atAir=0, maxBed=0;
   for(let k=0;k<N-1;k++){
     const f0=k/N, f1=(k+1)/N;
     for(let t=0;t<TH;t++){
       const th=t/TH*2*Math.PI;
       const dr=Math.abs(radiusAt(f1,th)-radiusAt(f0,th));
-      if(dr>maxDr){maxDr=dr;atFrac=f0;}
+      if(f0<bedFrac){ if(dr>maxBed)maxBed=dr; }
+      else if(dr>maxAir){ maxAir=dr; atAir=f0; }
     }
   }
-  // N 圈取樣可能少於實際圈數,把 Δr 換算回「每實際一圈」的位移
-  const per=maxDr*(N/revs);
-  return {dr:per, angle:Math.atan2(per,P.layerHeight)*180/Math.PI, frac:atFrac};
+  const s=N/revs; // 取樣圈數→實際圈數換算
+  return {dr:maxAir*s, drBed:maxBed*s, angle:Math.atan2(maxAir*s,P.layerHeight)*180/Math.PI, frac:atAir};
 }
 function overhangCulprits(baseDr){
   // 逐一把可疑參數歸零重算:誰歸零後 Δr 降最多,誰就是主因
@@ -510,17 +513,21 @@ function updateOhbar(){
   if(mode==='gcode'){bar.style.display='none';return;}
   bar.style.display='block';
   const o=computeOverhang(), a=o.angle.toFixed(0), pct=Math.round(o.frac*100);
+  const fallback = mode==='obj' ? 'OBJ 模型輪廓本身(參數歸零無法消除,屬模型形狀)' : '造型深度';
+  const twistHint='';
+  // 底部床接住區說明(只在底部很陡時提示,不影響判定)
+  const bedNote = o.drBed>2.0 ? `<br>↳ 底部另有 ${Math.round(Math.atan2(o.drBed,P.layerHeight)*180/Math.PI)}° 大張角(最底 2mm)——<b>貼著列印床,床會接住,不列入判定</b>,不用擔心。` : '';
   if(o.dr<=1.0){
     bar.className='ohbar g';
-    bar.innerHTML=`✓ 懸挑檢查:每圈懸空平移 <b>${o.dr.toFixed(1)}mm</b>(角度 ${a}°)— 單壁可承受,放心印。`;
+    bar.innerHTML=`✓ 懸挑檢查:每圈懸空平移 <b>${o.dr.toFixed(1)}mm</b>(角度 ${a}°)— 單壁可承受,放心印。${bedNote}`;
   }else if(o.dr<=2.0){
     const c=overhangCulprits(o.dr);
     bar.className='ohbar y';
-    bar.innerHTML=`⚠ 懸挑檢查:每圈懸空平移 <b>${o.dr.toFixed(1)}mm</b>(角度 ${a}°,約 ${pct}% 高度處)。印得出來,但懸挑面下側可能毛躁、輕微下垂。想更漂亮可調降:<b>${c.join('、')||'造型深度'}</b>。`;
+    bar.innerHTML=`⚠ 懸挑檢查:每圈懸空平移 <b>${o.dr.toFixed(1)}mm</b>(角度 ${a}°,約 ${pct}% 高度處)。印得出來,但懸挑面下側可能毛躁、輕微下垂——也可能是「開縫項鍊」那類特殊效果的入口。主因:<b>${c.join('、')||fallback}</b>。${twistHint}${bedNote}`;
   }else{
     const c=overhangCulprits(o.dr);
     bar.className='ohbar r';
-    bar.innerHTML=`✗ 懸挑檢查:最大 <b>${a}°</b>(約 ${pct}% 高度處)——每圈懸空平移 ${o.dr.toFixed(1)}mm,超過單壁能承受的範圍,<b>很可能垂料甚至塌陷</b>。請調降:<b>${c.join('、')||'造型深度'}</b>。`;
+    bar.innerHTML=`✗ 懸挑檢查:最大 <b>${a}°</b>(約 ${pct}% 高度處)——每圈懸空平移 ${o.dr.toFixed(1)}mm,超過單壁能承受的範圍,<b>很可能垂料甚至塌陷</b>。請調降:<b>${c.join('、')||fallback}</b>。${twistHint}${bedNote}`;
   }
 }
 function updateStats(){
