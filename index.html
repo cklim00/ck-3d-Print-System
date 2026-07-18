@@ -67,6 +67,11 @@
   .ohbar.y{background:#31280f;border-color:#8f7420;color:#ffd97a}
   .ohbar.r{background:#3a1e18;border-color:#7a3325;color:#ffb4a2}
   .ohbar b{font-weight:800}
+  details.expert{margin-top:20px;border:1.5px dashed var(--line);border-radius:12px;padding:0 16px;background:rgba(0,0,0,0.12)}
+  details.expert summary{cursor:pointer;padding:13px 0;font-family:var(--mono);font-size:10.5px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);user-select:none;list-style-position:outside}
+  details.expert summary:hover{color:var(--accent2)}
+  details.expert[open]{padding-bottom:10px;border-color:var(--accent)}
+  details.expert[open] summary{color:var(--accent)}
   .btn.primary:disabled{background:#5a4632;color:#a08a6e;border-color:#5a4632;cursor:not-allowed}
   .actions{display:flex;gap:10px;margin-top:16px;flex-wrap:wrap}
   .btn{font-family:var(--sans);font-size:14px;font-weight:700;border-radius:10px;padding:12px 16px;cursor:pointer;border:1px solid var(--line)}
@@ -166,6 +171,8 @@
         <div class="ctrl"><label>扭轉</label><span class="unit">度</span><input type="range" data-k="twist" min="0" max="1440" step="10"><input class="num" data-n="twist"></div>
       </div>
 
+      <details class="expert" id="expertbox">
+        <summary>⚙ 專家設定（尺寸/溫度/速度/開頭流程）— 老師調整用，學生不用動</summary>
       <div class="group designctrl">
         <p class="glabel" id="sizelabel">尺寸與品質</p>
         <div class="ctrl"><label id="hlabel">高度 🔒</label><span class="unit">mm</span><input type="range" data-k="height" min="10" max="180" step="1" value="40" disabled><input class="num" data-n="height" value="40" disabled></div>
@@ -195,9 +202,13 @@
         <label class="check"><input type="checkbox" data-k="bedMesh"><span>每次列印做床面調平 (G29)<span class="hint">預設關閉——用機器上次存的調平資料,省約 2–3 分鐘。床不平或常搬機器再開啟。</span></span></label>
         <label class="check" id="amsloadrow" style="margin-top:8px;display:none"><input type="checkbox" data-k="amsLoad"><span>開頭自動從 AMS 第 1 槽進料<span class="hint">⚠ 料必須放在 AMS 第 1 槽(最左),否則會卡「換料」。不勾 = 列印前自己在螢幕進料一次(最穩,之後整天不用再按)。</span></span></label>
       </div>
+      </details>
     </div>
 
     <div class="panel right">
+      <!-- 警語置頂:學生在左邊拉滑桿時,第一眼就看到 -->
+      <div class="ohbar g" id="ohbar" style="margin:0 0 10px">懸挑檢查中…</div>
+      <div class="timewarn" id="timewarn" style="display:none;margin:0 0 10px"></div>
       <canvas id="stage"></canvas>
       <div class="stagebar">
         <div class="seg" style="flex:none;gap:6px"><button id="v_lines" style="flex:none;padding:3px 12px">線條</button><button id="v_shade" class="on" style="flex:none;padding:3px 12px">實體</button></div>
@@ -211,9 +222,7 @@
         <div class="stat"><div class="k">用料長度</div><div class="v" id="s_fil">–</div></div>
         <div class="stat"><div class="k">重量</div><div class="v" id="s_g">–</div></div>
       </div>
-      <div class="ohbar g" id="ohbar">懸挑檢查中…</div>
       <div class="actions" id="actions"><button class="btn primary" id="dl">產生並下載 .gcode</button><button class="btn ghost" id="cp">複製</button></div>
-      <div class="timewarn" id="timewarn" style="display:none"></div>
       <details id="gcpreview"><summary>展開 G-code 預覽</summary><pre id="preview">按「產生並下載」後會在此顯示前段內容。</pre></details>
       <p class="note" id="printnote">存到 microSD → 插入機器 → 螢幕本機檔案選取直接印。第三方 gcode 無法用雲端送印。外徑超過約 250mm 會顯示紅字,請降低高度。</p>
     </div>
@@ -224,7 +233,7 @@
 <script>
 const P={baseR:17,topR:10,height:40,lobes:6,lobeDepth:2.5,twist:180,
   waveAmp:1.5,waveCount:12,profile:'straight',profileAmt:0.25,tex:'none',texAmp:1.5,
-  layerHeight:0.3,lineWidth:0.6,firstZ:0.2,flow:100,
+  layerHeight:0.2,lineWidth:0.6,firstZ:0.2,flow:100,   // 層高預設 0.2:實測最穩(GOOD01)
   nozzle:220,bed:60,speed:40,firstSpeed:18,fan:100,bedMesh:false,
   retract:0.8,retractF:2100,amsLoad:false,objWidth:100,
   filamentD:1.75,density:1.24};
@@ -652,6 +661,7 @@ function applyModeUI(){
   document.getElementById('shapegroup').classList.toggle('hidden',mode!=='param');
   document.getElementById('patterngroup').classList.toggle('hidden',imp);
   document.querySelectorAll('.designctrl').forEach(el=>el.classList.toggle('hidden',imp));
+  document.getElementById('expertbox').classList.toggle('hidden',imp);
   document.getElementById('actions').classList.toggle('hidden',imp);
   document.getElementById('gcpreview').classList.toggle('hidden',imp);
   document.getElementById('hlabel').textContent = mode==='obj'?'目標高度 🔒 (40mm)':'高度 🔒';
