@@ -62,6 +62,11 @@
   .stat .v.hot{color:var(--accent)}.stat .v.warn{color:var(--danger)}
   .stat .goal{font-size:10.5px;color:var(--muted);margin-top:2px;letter-spacing:.02em}
   .timewarn{background:#3a1e18;border:1px solid #7a3325;color:#ffb4a2;border-radius:10px;padding:10px 13px;font-size:12.5px;line-height:1.6;margin-top:10px}
+  .ohbar{border-radius:10px;padding:10px 13px;font-size:12.5px;line-height:1.65;margin-top:10px;border:1px solid var(--line)}
+  .ohbar.g{background:#14261c;border-color:#2e6b4a;color:#8fd6ae}
+  .ohbar.y{background:#31280f;border-color:#8f7420;color:#ffd97a}
+  .ohbar.r{background:#3a1e18;border-color:#7a3325;color:#ffb4a2}
+  .ohbar b{font-weight:800}
   .btn.primary:disabled{background:#5a4632;color:#a08a6e;border-color:#5a4632;cursor:not-allowed}
   .actions{display:flex;gap:10px;margin-top:16px;flex-wrap:wrap}
   .btn{font-family:var(--sans);font-size:14px;font-weight:700;border-radius:10px;padding:12px 16px;cursor:pointer;border:1px solid var(--line)}
@@ -205,6 +210,7 @@
         <div class="stat"><div class="k">用料長度</div><div class="v" id="s_fil">–</div></div>
         <div class="stat"><div class="k">重量</div><div class="v" id="s_g">–</div></div>
       </div>
+      <div class="ohbar g" id="ohbar">懸挑檢查中…</div>
       <div class="actions" id="actions"><button class="btn primary" id="dl">產生並下載 .gcode</button><button class="btn ghost" id="cp">複製</button></div>
       <div class="timewarn" id="timewarn" style="display:none"></div>
       <details id="gcpreview"><summary>展開 G-code 預覽</summary><pre id="preview">按「產生並下載」後會在此顯示前段內容。</pre></details>
@@ -465,6 +471,58 @@ function buildGcode(){
   const grams=totalE*filA/1000*P.density;
   return {gcode:g.join("\n"),totalMin,filMM:totalE,grams,layers:Math.round(pts._revs)};
 }
+/* ---------- 懸挑預判:逐圈計算半徑位移,換算懸挑角 ----------
+   原理:同一角度 θ 上,第 k+1 圈與第 k 圈的半徑差 Δr,就是新圈懸空平移量。
+   懸挑角 = atan(Δr / 層高)。實測校準:學生成功檔 45.9°(綠)、
+   漣漪/麻花等預設造型約 60~78°(黃,印得出但懸挑面下側毛躁)、
+   波浪20×4 = 85°(紅,垂料塌陷)。門檻用 Δr:綠 ≤1.0mm、黃 ≤2.0mm、紅 >2.0mm */
+function computeOverhang(){
+  const revs=P.height/P.layerHeight, N=Math.min(300,Math.floor(revs)), TH=72;
+  let maxDr=0, atFrac=0;
+  for(let k=0;k<N-1;k++){
+    const f0=k/N, f1=(k+1)/N;
+    for(let t=0;t<TH;t++){
+      const th=t/TH*2*Math.PI;
+      const dr=Math.abs(radiusAt(f1,th)-radiusAt(f0,th));
+      if(dr>maxDr){maxDr=dr;atFrac=f0;}
+    }
+  }
+  // N 圈取樣可能少於實際圈數,把 Δr 換算回「每實際一圈」的位移
+  const per=maxDr*(N/revs);
+  return {dr:per, angle:Math.atan2(per,P.layerHeight)*180/Math.PI, frac:atFrac};
+}
+function overhangCulprits(baseDr){
+  // 逐一把可疑參數歸零重算:誰歸零後 Δr 降最多,誰就是主因
+  const suspects=[["waveAmp","波浪深度×波浪數"],["lobeDepth","花瓣深度(含扭轉效應)"],["twist","扭轉"],["texAmp","紋路強度"],["profileAmt","輪廓強度"]];
+  const drops=[];
+  for(const [k,label] of suspects){
+    if(!P[k])continue;
+    const keep=P[k];P[k]=0;
+    const d=computeOverhang().dr;P[k]=keep;
+    const drop=baseDr-d;
+    if(drop>0.08)drops.push({label,drop});
+  }
+  drops.sort((a,b)=>b.drop-a.drop);
+  return drops.slice(0,2).map(d=>d.label);
+}
+function updateOhbar(){
+  const bar=document.getElementById('ohbar');
+  if(mode==='gcode'){bar.style.display='none';return;}
+  bar.style.display='block';
+  const o=computeOverhang(), a=o.angle.toFixed(0), pct=Math.round(o.frac*100);
+  if(o.dr<=1.0){
+    bar.className='ohbar g';
+    bar.innerHTML=`✓ 懸挑檢查:每圈懸空平移 <b>${o.dr.toFixed(1)}mm</b>(角度 ${a}°)— 單壁可承受,放心印。`;
+  }else if(o.dr<=2.0){
+    const c=overhangCulprits(o.dr);
+    bar.className='ohbar y';
+    bar.innerHTML=`⚠ 懸挑檢查:每圈懸空平移 <b>${o.dr.toFixed(1)}mm</b>(角度 ${a}°,約 ${pct}% 高度處)。印得出來,但懸挑面下側可能毛躁、輕微下垂。想更漂亮可調降:<b>${c.join('、')||'造型深度'}</b>。`;
+  }else{
+    const c=overhangCulprits(o.dr);
+    bar.className='ohbar r';
+    bar.innerHTML=`✗ 懸挑檢查:最大 <b>${a}°</b>(約 ${pct}% 高度處)——每圈懸空平移 ${o.dr.toFixed(1)}mm,超過單壁能承受的範圍,<b>很可能垂料甚至塌陷</b>。請調降:<b>${c.join('、')||'造型深度'}</b>。`;
+  }
+}
 function updateStats(){
   if(mode==='gcode'){
     if(!GINFO){s_dia.textContent=s_h.textContent=s_layers.textContent=s_time.textContent=s_fil.textContent=s_g.textContent='–';return;}
@@ -597,7 +655,7 @@ function syncInputs(){
   document.querySelectorAll('[data-profile]').forEach(b=>b.classList.toggle('on',b.dataset.profile===P.profile));
   document.querySelectorAll('[data-tex]').forEach(b=>b.classList.toggle('on',b.dataset.tex===P.tex));
 }
-function refresh(){updateStats();draw();}
+function refresh(){updateStats();updateOhbar();draw();}
 document.querySelectorAll('input[type=range]').forEach(r=>r.addEventListener('input',e=>{const k=e.target.dataset.k;P[k]=parseFloat(e.target.value);const n=document.querySelector(`[data-n="${k}"]`);if(n)n.value=P[k];refresh();}));
 document.querySelectorAll('.num').forEach(n=>n.addEventListener('change',e=>{const k=e.target.dataset.n;let v=parseFloat(e.target.value);if(isNaN(v))return;P[k]=v;const r=document.querySelector(`input[type=range][data-k="${k}"]`);if(r)r.value=v;refresh();}));
 document.querySelector('[data-k="bedMesh"]').addEventListener('change',e=>{P.bedMesh=e.target.checked;refresh();});
