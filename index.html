@@ -187,6 +187,7 @@
       <div class="group designctrl">
         <p class="glabel">開頭流程</p>
         <label class="check"><input type="checkbox" data-k="bedMesh"><span>每次列印做床面調平 (G29)<span class="hint">預設關閉——用機器上次存的調平資料,省約 2–3 分鐘。床不平或常搬機器再開啟。</span></span></label>
+        <label class="check" id="amsloadrow" style="margin-top:8px;display:none"><input type="checkbox" data-k="amsLoad"><span>開頭自動從 AMS 第 1 槽進料<span class="hint">⚠ 料必須放在 AMS 第 1 槽(最左),否則會卡「換料」。不勾 = 列印前自己在螢幕進料一次(最穩,之後整天不用再按)。</span></span></label>
       </div>
     </div>
 
@@ -218,7 +219,7 @@ const P={baseR:17,topR:10,height:40,lobes:6,lobeDepth:2.5,twist:180,
   waveAmp:1.5,waveCount:12,profile:'straight',profileAmt:0.25,tex:'none',texAmp:1.5,
   layerHeight:0.3,lineWidth:0.6,firstZ:0.2,flow:100,
   nozzle:220,bed:60,speed:40,firstSpeed:18,fan:100,bedMesh:false,
-  retract:0.8,retractF:2100,amsSlot:1,
+  retract:0.8,retractF:2100,amsLoad:false,
   filamentD:1.75,density:1.24};
 const MAT={PLA:{nozzle:220,bed:60,density:1.24},PETG:{nozzle:240,bed:70,density:1.27},TPU:{nozzle:230,bed:40,density:1.21}};
 let material="PLA", mode="param", ENV=null, RAW=null, upAxis="Y", GRAW=null, GENV=null, GINFO=null;
@@ -264,34 +265,16 @@ const MACHINE={
   P2S:{
     label:"Bambu P2S",
     bedX:256, bedY:256, bedZ:256,
-    startupNoMesh:120, startupMesh:180,
-    maxMin:16,
-    presentBed:false,
+    startupNoMesh:75, startupMesh:210,
+    maxMin:14,
+    presentBed:true,
     alwaysLevel:false,
-    note:"P2S 簡易起始(無 AMS/換料指令,避開「換料」報錯)。校準由機器韌體自動處理。⚠ 列印前務必先在 P2S 螢幕手動『進料』,把耗材送到噴頭、擠出一點來,再開印——否則噴頭沒料會擠不出。第一次留在電源開關旁。",
-    fanOnLines:(P,mat)=>["M106 P1 S"+Math.round(P.fan*255/100)+" ; part cooling fan (P1)"],
-    fanOff:"M106 P1 S0 ; first-layer part fan OFF",
-    start(P){
-      const g=[];
-      g.push("; ===== Bambu P2S — SIMPLE START (no AMS; 先手動進料到噴頭) =====");
-      g.push("M17 ; enable steppers (default current, CoreXY)");
-      g.push("M104 S150 ; preheat (avoid ooze while homing)");
-      g.push("M140 S"+P.bed,"M190 S"+P.bed+" ; wait bed","M109 S150 ; wait preheat");
-      g.push("G28 ; home all");
-      if(P.bedMesh) g.push("G29 ; full bed leveling this print");
-      else g.push("G29.2 S1 ; apply machine's saved mesh (Z compensation)");
-      g.push("M104 S"+P.nozzle,"M109 S"+P.nozzle+" ; wait nozzle to print temp");
-      return g;
-    },
-    end(P){
-      const g=[];
-      g.push("; ===== P2S END =====","M73 P100 R0");
-      g.push("M104 S0 ; nozzle off","M140 S0 ; bed off","M106 P1 S0 ; part fan off");
-      g.push("G91","G1 Z20 F900 ; lift","G90");
-      g.push("G1 X128 Y250 F12000 ; park to back (enclosed)");
-      g.push("M84 ; motors off","; done");
-      return g;
-    }
+    note:"輸出的 G-code 與 A1 版『完全相同』——這種檔案已實測可在 P2S 上直接跑,不會跳板型或耗材警告。⚠ 唯一步驟:列印前先在 P2S 螢幕從 AMS『進料』,把料送到噴頭、看到擠出一小段,再開始列印(否則噴頭沒料,會空跑)。",
+    // ↓ 以下與 A1 完全相同(勿再加任何 P2S 專屬指令——實測加了反而觸發韌體警告)
+    fanOnLines:(P,mat)=>["M106 S"+Math.round(P.fan*255/100)+" ; part fan on"],
+    fanOff:"M107 ; first-layer fan OFF",
+    start(P){ return MACHINE.A1.start(P); },
+    end(P){ return MACHINE.A1.end(P); }
   }
 };
 
@@ -448,11 +431,17 @@ function buildGcode(){
   const startupSec=P.bedMesh?M.startupMesh:M.startupNoMesh, totalSec=len/P.speed+startupSec, totalMin=Math.max(1,Math.round(totalSec/60));
   const feed=Math.round(P.speed*60),feed1=Math.round(P.firstSpeed*60);
   const g=[];
-  g.push("; spiral vase, single-wall | "+(mode==='obj'?'from OBJ':'parametric')+" | "+M.label+" | Vase Studio");
-  g.push("; VASE_PARAMS: "+JSON.stringify({machine:machine,mode:mode,material:material,baseR:P.baseR,topR:P.topR,height:P.height,lobes:P.lobes,lobeDepth:P.lobeDepth,twist:P.twist,waveAmp:P.waveAmp,waveCount:P.waveCount,profile:P.profile,profileAmt:P.profileAmt,tex:P.tex,texAmp:P.texAmp,layerHeight:P.layerHeight,lineWidth:P.lineWidth,nozzle:P.nozzle,bed:P.bed,speed:P.speed}));
+  // 標頭格式與「已驗證可在 A1/P2S 跑」的原版完全一致:不加機型標籤、不加板型聲明
+  g.push("; spiral vase, single-wall | "+(mode==='obj'?'from OBJ':'parametric')+" | Vase Studio");
+  g.push("; VASE_PARAMS: "+JSON.stringify({mode:mode,material:material,baseR:P.baseR,topR:P.topR,height:P.height,lobes:P.lobes,lobeDepth:P.lobeDepth,twist:P.twist,waveAmp:P.waveAmp,waveCount:P.waveCount,profile:P.profile,profileAmt:P.profileAmt,tex:P.tex,texAmp:P.texAmp,layerHeight:P.layerHeight,lineWidth:P.lineWidth,nozzle:P.nozzle,bed:P.bed,speed:P.speed}));
   g.push("M73 P0 R"+totalMin,"G90","G21","M83");
   // ---- 機型專屬開頭 ----
   M.start(P).forEach(l=>g.push(l));
+  // ---- (P2S 選用) 自動從 AMS 第 1 槽進料:指令序列取自實測可印的 Bambu Studio demo 檔 ----
+  if(machine==='P2S'&&P.amsLoad){
+    g.push("; ----- auto load filament from AMS slot 1 (需第 1 槽有料) -----");
+    g.push("M620 S0A ; AMS switch to slot 1","M400","T0","M400","M628 S0","M629","M400","M621 S0A ; AMS load done");
+  }
   // ---- 邊緣清料(兩機共用,座標落在 256×256 床內)----
   g.push("; ----- purge line on front edge -----",M.fanOff,"G1 Z0.3 F900","G1 X20 Y6 F18000","G1 Z0.3 F900");
   g.push("G1 X160 Y6 E18 F1200 ; purge 1","G1 X160 Y6.6 F1200","G1 X30 Y6.6 E14 F1200 ; purge 2","G1 Z1 F900");
@@ -612,6 +601,7 @@ function refresh(){updateStats();draw();}
 document.querySelectorAll('input[type=range]').forEach(r=>r.addEventListener('input',e=>{const k=e.target.dataset.k;P[k]=parseFloat(e.target.value);const n=document.querySelector(`[data-n="${k}"]`);if(n)n.value=P[k];refresh();}));
 document.querySelectorAll('.num').forEach(n=>n.addEventListener('change',e=>{const k=e.target.dataset.n;let v=parseFloat(e.target.value);if(isNaN(v))return;P[k]=v;const r=document.querySelector(`input[type=range][data-k="${k}"]`);if(r)r.value=v;refresh();}));
 document.querySelector('[data-k="bedMesh"]').addEventListener('change',e=>{P.bedMesh=e.target.checked;refresh();});
+document.querySelector('[data-k="amsLoad"]').addEventListener('change',e=>{P.amsLoad=e.target.checked;refresh();});
 document.querySelectorAll('[data-profile]').forEach(b=>b.addEventListener('click',()=>{P.profile=b.dataset.profile;syncInputs();refresh();}));
 document.querySelectorAll('[data-tex]').forEach(b=>b.addEventListener('click',()=>{P.tex=b.dataset.tex;syncInputs();refresh();}));
 const PRESETS={
@@ -649,6 +639,10 @@ function setMachine(name){
     cb.disabled=false;
     if(hint)hint.textContent='預設關閉——用機器上次存的調平資料,省約 2–3 分鐘。床不平或常搬機器再開啟。';
   }
+  // 「AMS 自動進料」勾選只在 P2S 顯示;切回 A1 時自動取消(A1 檔案結構不含 AMS 指令)
+  const alr=document.getElementById('amsloadrow');
+  alr.style.display = machine==='P2S' ? 'flex' : 'none';
+  if(machine!=='P2S'){P.amsLoad=false;alr.querySelector('input').checked=false;}
   refresh();
 }
 document.querySelectorAll('#machineseg button').forEach(b=>b.addEventListener('click',()=>setMachine(b.dataset.machine)));
