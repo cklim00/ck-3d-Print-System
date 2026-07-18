@@ -125,6 +125,7 @@
         <div class="ctrl" style="margin-top:12px"><label>模型朝上軸向</label><span class="unit"></span>
           <div class="seg" style="grid-column:1/3"><button data-axis="Y" class="on">Y 軸朝上</button><button data-axis="Z">Z 軸朝上</button></div>
         </div>
+        <div class="ctrl"><label>模型胖瘦（半徑縮放）</label><span class="unit">%</span><input type="range" data-k="objWidth" min="50" max="200" step="5"><input class="num" data-n="objWidth"></div>
       </div>
 
       <!-- 參數形狀 -->
@@ -225,7 +226,7 @@ const P={baseR:17,topR:10,height:40,lobes:6,lobeDepth:2.5,twist:180,
   waveAmp:1.5,waveCount:12,profile:'straight',profileAmt:0.25,tex:'none',texAmp:1.5,
   layerHeight:0.3,lineWidth:0.6,firstZ:0.2,flow:100,
   nozzle:220,bed:60,speed:40,firstSpeed:18,fan:100,bedMesh:false,
-  retract:0.8,retractF:2100,amsLoad:false,
+  retract:0.8,retractF:2100,amsLoad:false,objWidth:100,
   filamentD:1.75,density:1.24};
 const MAT={PLA:{nozzle:220,bed:60,density:1.24},PETG:{nozzle:240,bed:70,density:1.27},TPU:{nozzle:230,bed:40,density:1.21}};
 let material="PLA", mode="param", ENV=null, RAW=null, upAxis="Y", GRAW=null, GENV=null, GINFO=null;
@@ -407,7 +408,7 @@ function radiusAt(frac,theta){
     const t0=Math.floor(tf)%thBins,t1=(t0+1)%thBins,tt=tf-Math.floor(tf);
     const g=(z,t)=>grid[z*thBins+t];
     const A=g(z0,t0)*(1-tt)+g(z0,t1)*tt, B=g(z1,t0)*(1-tt)+g(z1,t1)*tt;
-    base=(A*(1-zt)+B*zt)*sc;
+    base=(A*(1-zt)+B*zt)*sc*(P.objWidth/100);  // 模型胖瘦:半徑縮放,高度不變
   }
   // ----- 共用圖樣（兩種模式都套用）-----
   if(P.profile==='barrel') base*=1+P.profileAmt*Math.sin(Math.PI*frac);
@@ -417,7 +418,9 @@ function radiusAt(frac,theta){
   base+=texOffset(theta,frac);                                          // 紋路風格
   // 鎖定頂部開口半徑 = 10mm(放燈用):頂端約 22% 平順收束到 10mm
   const wt=Math.max(0,(frac-0.78)/0.22); if(wt>0){const s=wt*wt*(3-2*wt); base=base*(1-s)+10*s;}
-  return Math.min(121,Math.max(0.8,base));
+  // 燈具通道保證:LED 燈下方有 1.2×1.2cm 方塊(對角線 17mm → 需半徑 8.5 + 餘裕 1)。
+  // 全瓶內半徑不得小於 9.5mm,任何造型(花瓣深谷/束腰/OBJ內縮)都保證燈放得到底。
+  return Math.min(121,Math.max(9.5,base));
 }
 
 /* ---------- 螺旋點 / gcode ---------- */
@@ -439,7 +442,7 @@ function buildGcode(){
   const g=[];
   // 標頭格式與「已驗證可在 A1/P2S 跑」的原版完全一致:不加機型標籤、不加板型聲明
   g.push("; spiral vase, single-wall | "+(mode==='obj'?'from OBJ':'parametric')+" | Vase Studio");
-  g.push("; VASE_PARAMS: "+JSON.stringify({mode:mode,material:material,baseR:P.baseR,topR:P.topR,height:P.height,lobes:P.lobes,lobeDepth:P.lobeDepth,twist:P.twist,waveAmp:P.waveAmp,waveCount:P.waveCount,profile:P.profile,profileAmt:P.profileAmt,tex:P.tex,texAmp:P.texAmp,layerHeight:P.layerHeight,lineWidth:P.lineWidth,nozzle:P.nozzle,bed:P.bed,speed:P.speed}));
+  g.push("; VASE_PARAMS: "+JSON.stringify({mode:mode,material:material,baseR:P.baseR,topR:P.topR,height:P.height,objWidth:P.objWidth,lobes:P.lobes,lobeDepth:P.lobeDepth,twist:P.twist,waveAmp:P.waveAmp,waveCount:P.waveCount,profile:P.profile,profileAmt:P.profileAmt,tex:P.tex,texAmp:P.texAmp,layerHeight:P.layerHeight,lineWidth:P.lineWidth,nozzle:P.nozzle,bed:P.bed,speed:P.speed}));
   g.push("M73 P0 R"+totalMin,"G90","G21","M83");
   // ---- 機型專屬開頭 ----
   M.start(P).forEach(l=>g.push(l));
@@ -549,7 +552,7 @@ function updateStats(){
   const _M=MACHINE[machine];const min=Math.max(1,Math.round((len/P.speed+(P.bedMesh?_M.startupMesh:_M.startupNoMesh))/60));
   const pmul = P.profile==='barrel'?1+P.profileAmt:1;
   const tex = P.tex==='none'?0:P.texAmp;
-  const dia = mode==='obj'&&ENV ? 2*(ENV.maxR*objScale()*pmul+P.lobeDepth+P.waveAmp+tex) : 2*(Math.max(P.baseR,P.topR)*pmul+P.lobeDepth+P.waveAmp+tex);
+  const dia = mode==='obj'&&ENV ? 2*(ENV.maxR*objScale()*(P.objWidth/100)*pmul+P.lobeDepth+P.waveAmp+tex) : 2*(Math.max(P.baseR,P.topR)*pmul+P.lobeDepth+P.waveAmp+tex);
   s_dia.innerHTML=dia.toFixed(0)+'<small> mm</small>';s_h.innerHTML=P.height.toFixed(0)+'<small> mm</small>';
   s_layers.textContent=Math.round(pts._revs);s_time.innerHTML=min+'<small> 分</small>';
   s_fil.innerHTML=(totalE/1000).toFixed(1)+'<small> m</small>';s_g.innerHTML=grams.toFixed(1)+'<small> g</small>';
@@ -727,7 +730,7 @@ function loadFile(f){
     if(V.length<3||F.length<1){toast('OBJ 解析失敗或無面');return;}
     RAW={V,F};ENV=buildEnvelope(V,F,upAxis);mode='obj';
     GRAW=null;GENV=null;GINFO=null; // 清掉先前匯入的 gcode 狀態
-    P.waveAmp=0;P.lobeDepth=0;P.twist=0;P.profile='straight';P.tex='none'; // 先呈現模型原貌,圖樣由學生自行疊加
+    P.waveAmp=0;P.lobeDepth=0;P.twist=0;P.profile='straight';P.tex='none';P.objWidth=100; // 先呈現模型原貌,圖樣由學生自行疊加
     P.height=40;P.firstZ=0.2; // 鎖定高度 40mm
     document.getElementById('chip').style.display='flex';
     document.getElementById('fname').textContent=f.name;
