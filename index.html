@@ -809,16 +809,20 @@ function renderGInfo(r){
   if(p){
     html+='<div style="margin:8px 0 4px;color:var(--accent2);font-family:var(--mono);font-size:11px;letter-spacing:.1em">還原的設計設定</div>';
     if(p.material)html+=row('材料',p.material);
+    html+=row('模式',p.mode==='obj'?'上傳 OBJ':'參數花瓶');
+    html+=row('高度',(p.height??'?')+' mm');
     html+=row('層高 / 線寬',(p.layerHeight??'?')+' / '+(p.lineWidth??'?')+' mm');
     if(p.mode!=='obj')html+=row('底/頂半徑',(p.baseR??'?')+' / '+(p.topR??'?')+' mm');
-    html+=row('花瓣',(p.lobes??0)+' 瓣 · 深 '+(p.lobeDepth??0)+' mm');
+    if(p.mode==='obj')html+=row('模型胖瘦',(p.objWidth??100)+' %');
+    const profName={straight:'直筒',barrel:'鼓形',hourglass:'沙漏'}[p.profile]||p.profile||'直筒';
+    html+=row('輪廓',profName+(p.profile&&p.profile!=='straight'?' · 強度 '+(p.profileAmt??'?'):''));
     html+=row('波浪',(p.waveCount??0)+' 道 · 深 '+(p.waveAmp??0)+' mm');
+    html+=row('花瓣',(p.lobes??0)+' 瓣 · 深 '+(p.lobeDepth??0)+' mm');
     html+=row('扭轉',(p.twist??0)+'°');
     const texName={none:'無',flame:'火焰',water:'水波',vein:'葉脈'}[p.tex]||p.tex||'無';
-    html+=row('紋路',texName+(p.tex&&p.tex!=='none'?' · 強 '+(p.texAmp??0)+' mm':''));
-    const profName={straight:'直筒',barrel:'鼓形',hourglass:'沙漏'}[p.profile]||p.profile||'直筒';
-    html+=row('輪廓',profName);
+    html+=row('紋路風格',texName+(p.tex&&p.tex!=='none'?' · 強度 '+(p.texAmp??0)+' mm':''));
     html+=row('列印速度',(p.speed??'?')+' mm/s');
+    html+='<details style="margin-top:10px"><summary style="cursor:pointer;font-family:var(--mono);font-size:11px;color:var(--muted)">完整參數 (JSON)</summary><pre style="max-height:180px;font-size:10.5px;color:var(--cool);overflow:auto;padding:6px 0 0">'+JSON.stringify(p,null,1)+'</pre></details>';
   }else{
     html+='<div style="margin-top:8px;color:var(--muted);font-size:12px">此檔沒有內嵌設計參數(可能是舊版或別的軟體切的),以下數據由走線推算,右側為實際走線模擬。</div>';
   }
