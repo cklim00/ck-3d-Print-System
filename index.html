@@ -131,6 +131,7 @@
           <div class="seg" style="grid-column:1/3"><button data-axis="Y" class="on">Y 軸朝上</button><button data-axis="Z">Z 軸朝上</button></div>
         </div>
         <div class="ctrl"><label>模型胖瘦（半徑縮放）</label><span class="unit">%</span><input type="range" data-k="objWidth" min="50" max="200" step="5"><input class="num" data-n="objWidth"></div>
+        <label class="check" style="margin-top:8px"><input type="checkbox" data-k="autoCrop" checked><span>頂部過窄自動裁切（角色燈建議開啟）<span class="hint">角色頭頂的呆毛/尖頂若窄於燈孔(半徑 &lt; 9.5mm)，會被燈道保底撐成一根細管。開啟後自動裁掉過窄的頂端，讓 20mm 開口直接落在頭頂圓弧上。花瓶/燈罩類頂部本來就寬，完全不受影響。<b id="cropinfo" style="color:#c96"></b></span></span></label>
       </div>
 
       <!-- 參數形狀 -->
@@ -236,10 +237,10 @@ const P={baseR:17,topR:10,height:40,lobes:6,lobeDepth:2.5,twist:180,
   waveAmp:1.5,waveCount:12,profile:'straight',profileAmt:0.25,tex:'none',texAmp:1.5,
   layerHeight:0.2,lineWidth:0.6,firstZ:0.2,flow:100,   // 層高預設 0.2:實測最穩(GOOD01)
   nozzle:220,bed:60,speed:40,firstSpeed:18,fan:100,bedMesh:false,
-  retract:0.8,retractF:2100,amsLoad:false,objWidth:100,
+  retract:0.8,retractF:2100,amsLoad:false,objWidth:100,autoCrop:true,
   filamentD:1.75,density:1.24};
 const MAT={PLA:{nozzle:220,bed:60,density:1.24},PETG:{nozzle:240,bed:70,density:1.27},TPU:{nozzle:230,bed:40,density:1.21}};
-let material="PLA", mode="param", ENV=null, RAW=null, upAxis="Y", GRAW=null, GENV=null, GINFO=null;
+let material="PLA", mode="param", ENV=null, RAW=null, upAxis="Y", GRAW=null, GENV=null, GINFO=null, CROP=1;
 let machine="A1";   // "A1" | "P2S"
 let TEACHER=false;  // 老師解鎖模式:密碼解除高度+時間限制(懸挑檢查/開口鎖/通道保證仍生效)
 const TEACHER_PW="CKfablab";
@@ -337,7 +338,23 @@ function buildEnvelope(V,F,up,thBins=360,zBins=240){ // 角度解析度 360(=1°
     if(zA>=0&&zB>=0){const t0=(z-zA)/(zB-zA);for(let t=0;t<thBins;t++)grid[z*thBins+t]=grid[zA*thBins+t]*(1-t0)+grid[zB*thBins+t]*t0;}
     else{const s=zA>=0?zA:zB;if(s>=0)for(let t=0;t<thBins;t++)grid[z*thBins+t]=grid[s*thBins+t];}}
   let maxR=0;for(const v of grid)if(v>maxR)maxR=v;
-  return {grid,thBins,zBins,H0,maxR:maxR||1};
+  // 每層最大半徑(供「頂部過窄自動裁切」判斷)
+  const rowMax=new Float32Array(zBins);
+  for(let z=0;z<zBins;z++){let m=0;for(let t=0;t<thBins;t++){const v=grid[z*thBins+t];if(v>m)m=v;}rowMax[z]=m;}
+  return {grid,thBins,zBins,H0,maxR:maxR||1,rowMax};
+}
+// 頂部過窄自動裁切:從頂端往下掃,凡「該層最寬處」換算成列印尺寸後仍窄於 10.5mm
+// (低於燈道保底 9.5 → 會被撐成細管;10.5 = 保底+餘裕,只裁真正會變煙囪的部分),最多裁 40%。
+// 花瓶類頂部寬 → CROP 恆為 1,行為完全不變。
+function computeCrop(){
+  CROP=1;
+  if(mode!=='obj'||!ENV||!P.autoCrop)return;
+  const sc=objScale()*(P.objWidth/100), rm=ENV.rowMax, zB=ENV.zBins, zMin=Math.floor(zB*0.6);
+  let z=zB-1;
+  while(z>zMin && rm[z]*sc<10.5) z--;
+  CROP=(z+1)/zB;
+  const info=document.getElementById('cropinfo');
+  if(info)info.textContent=CROP<1?(' 本模型已自動裁掉頂部 '+Math.round((1-CROP)*100)+'%，開口落在頭頂圓弧上。'):'';
 }
 function objScale(){return ENV?P.height/ENV.H0:1;}
 function harm(theta,frac,seed){
@@ -415,7 +432,7 @@ function radiusAt(frac,theta){
   }else{
     if(!ENV)return 10;
     const {grid,thBins,zBins}=ENV, sc=objScale();
-    const zf=frac*(zBins-1),z0=Math.floor(zf),z1=Math.min(zBins-1,z0+1),zt=zf-z0;
+    const zf=frac*CROP*(zBins-1),z0=Math.floor(zf),z1=Math.min(zBins-1,z0+1),zt=zf-z0; // CROP<1 時只取模型下段,裁掉過窄頂部
     let tf=(theta/(2*Math.PI))*thBins;tf=((tf%thBins)+thBins)%thBins;
     const t0=Math.floor(tf)%thBins,t1=(t0+1)%thBins,tt=tf-Math.floor(tf);
     const g=(z,t)=>grid[z*thBins+t];
@@ -446,6 +463,7 @@ function spiralPoints(maxPts){
   pts._revs=revs;return pts;
 }
 function buildGcode(){
+  computeCrop(); // 確保裁切狀態與目前參數一致
   const M=MACHINE[machine];
   const filA=Math.PI*Math.pow(P.filamentD/2,2), pts=spiralPoints(null);
   let len=0;for(let i=1;i<pts.length;i++){const a=pts[i-1],b=pts[i];len+=Math.hypot(b[0]-a[0],b[1]-a[1],b[2]-a[2]);}
@@ -454,7 +472,7 @@ function buildGcode(){
   const g=[];
   // 標頭格式與「已驗證可在 A1/P2S 跑」的原版完全一致:不加機型標籤、不加板型聲明
   g.push("; spiral vase, single-wall | "+(mode==='obj'?'from OBJ':'parametric')+" | Vase Studio");
-  g.push("; VASE_PARAMS: "+JSON.stringify({mode:mode,material:material,baseR:P.baseR,topR:P.topR,height:P.height,objWidth:P.objWidth,lobes:P.lobes,lobeDepth:P.lobeDepth,twist:P.twist,waveAmp:P.waveAmp,waveCount:P.waveCount,profile:P.profile,profileAmt:P.profileAmt,tex:P.tex,texAmp:P.texAmp,layerHeight:P.layerHeight,lineWidth:P.lineWidth,nozzle:P.nozzle,bed:P.bed,speed:P.speed}));
+  g.push("; VASE_PARAMS: "+JSON.stringify({mode:mode,material:material,baseR:P.baseR,topR:P.topR,height:P.height,objWidth:P.objWidth,lobes:P.lobes,lobeDepth:P.lobeDepth,twist:P.twist,waveAmp:P.waveAmp,waveCount:P.waveCount,profile:P.profile,profileAmt:P.profileAmt,tex:P.tex,texAmp:P.texAmp,layerHeight:P.layerHeight,lineWidth:P.lineWidth,nozzle:P.nozzle,bed:P.bed,speed:P.speed,topCrop:+(1-CROP).toFixed(3)}));
   g.push("M73 P0 R"+totalMin,"G90","G21","M83");
   // ---- 機型專屬開頭 ----
   M.start(P).forEach(l=>g.push(l));
@@ -697,19 +715,20 @@ document.getElementById('teacherbtn').addEventListener('click',()=>{
   else if(pw!==null){ toast('密碼錯誤'); }
 });
 
-function refresh(){updateStats();updateOhbar();draw();}
+function refresh(){computeCrop();updateStats();updateOhbar();draw();}
 document.querySelectorAll('input[type=range]').forEach(r=>r.addEventListener('input',e=>{const k=e.target.dataset.k;P[k]=parseFloat(e.target.value);const n=document.querySelector(`[data-n="${k}"]`);if(n)n.value=P[k];refresh();}));
 document.querySelectorAll('.num').forEach(n=>n.addEventListener('change',e=>{const k=e.target.dataset.n;let v=parseFloat(e.target.value);if(isNaN(v))return;P[k]=v;const r=document.querySelector(`input[type=range][data-k="${k}"]`);if(r)r.value=v;refresh();}));
 document.querySelector('[data-k="bedMesh"]').addEventListener('change',e=>{P.bedMesh=e.target.checked;refresh();});
 document.querySelector('[data-k="amsLoad"]').addEventListener('change',e=>{P.amsLoad=e.target.checked;refresh();});
+document.querySelector('[data-k="autoCrop"]').addEventListener('change',e=>{P.autoCrop=e.target.checked;refresh();});
 document.querySelectorAll('[data-profile]').forEach(b=>b.addEventListener('click',()=>{P.profile=b.dataset.profile;syncInputs();refresh();}));
 document.querySelectorAll('[data-tex]').forEach(b=>b.addEventListener('click',()=>{P.tex=b.dataset.tex;syncInputs();refresh();}));
 const PRESETS={
-  ripple:{baseR:20,topR:20,lobes:0,lobeDepth:0,twist:0,waveCount:16,waveAmp:2.2,profile:'straight',profileAmt:0.25},
-  petal:{baseR:16,topR:20,lobes:6,lobeDepth:3.5,twist:360,waveCount:0,waveAmp:0,profile:'straight',profileAmt:0.25},
-  barrel:{baseR:18,topR:18,lobes:0,lobeDepth:0,twist:0,waveCount:10,waveAmp:1.6,profile:'barrel',profileAmt:0.4},
-  star:{baseR:18,topR:18,lobes:5,lobeDepth:6,twist:0,waveCount:0,waveAmp:0,profile:'straight',profileAmt:0.25},
-  twistwave:{baseR:15,topR:15,lobes:8,lobeDepth:2,twist:720,waveCount:20,waveAmp:1.2,profile:'hourglass',profileAmt:0.3}
+  ripple:{baseR:20,topR:20,lobes:0,lobeDepth:0,twist:0,waveCount:16,waveAmp:2.2,profile:'straight',profileAmt:0.25,tex:'none',texAmp:0,layerHeight:0.2},
+  petal:{baseR:16,topR:20,lobes:6,lobeDepth:3.5,twist:360,waveCount:0,waveAmp:0,profile:'straight',profileAmt:0.25,tex:'none',texAmp:0,layerHeight:0.2},
+  barrel:{baseR:18,topR:18,lobes:0,lobeDepth:0,twist:0,waveCount:10,waveAmp:1.6,profile:'barrel',profileAmt:0.4,tex:'none',texAmp:0,layerHeight:0.2},
+  star:{baseR:18,topR:18,lobes:5,lobeDepth:6,twist:0,waveCount:0,waveAmp:0,profile:'straight',profileAmt:0.25,tex:'none',texAmp:0,layerHeight:0.2},
+  twistwave:{baseR:15,topR:15,lobes:8,lobeDepth:2,twist:720,waveCount:20,waveAmp:1.2,profile:'hourglass',profileAmt:0.3,tex:'none',texAmp:0,layerHeight:0.2}
 };
 document.querySelectorAll('[data-preset]').forEach(b=>b.addEventListener('click',()=>{
   Object.assign(P,PRESETS[b.dataset.preset]);mode='param';applyModeUI();syncInputs();refresh();
@@ -845,5 +864,7 @@ document.getElementById('dl').addEventListener('click',()=>{const r=generate();
 document.getElementById('cp').addEventListener('click',async()=>{if(!lastG)generate();try{await navigator.clipboard.writeText(lastG);toast('已複製 G-code');}catch{toast('複製失敗,請用下載');}});
 
 window.addEventListener('resize',draw);
-applyModeUI();syncInputs();setMachine('A1');refresh();loop();
+// 網址參數可預設機型:  ?m=P2S 或 ?machine=P2S  → 開頁直接是 P2S(工作坊 Dashboard 連結用)
+var _mq=(new URLSearchParams(location.search).get('m')||new URLSearchParams(location.search).get('machine')||'').toUpperCase();
+applyModeUI();syncInputs();setMachine(_mq==='P2S'?'P2S':'A1');refresh();loop();
 </script>
